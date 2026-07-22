@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>学习搭子 | Learn by doing</title>
+    <meta
+      name="description"
+      content="学习搭子把初高中知识做成可玩的工具和能直接用的资料，从真实学习现场出发。"
+    >
+    <meta property="og:title" content="学习搭子">
+    <meta property="og:description" content="边做边学的初高中工具站。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://xuexidazi.site/">
+    <meta name="theme-color" content="#fbfbf7">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="主导航">
+        <a class="brand" href="#top" aria-label="学习搭子首页">
+          <img class="brand-logo" src="logo/学习搭子logo_nav.png" alt="学习搭子">
+        </a>
+        <div class="auth-nav">
+          <button class="login-link" type="button" data-auth-open="login">登录</button>
+          <div class="user-menu" data-auth-user hidden>
+            <button class="user-pill" type="button" disabled>
+              <span data-auth-name></span>
+            </button>
+            <button class="logout-button" type="button" data-auth-logout>退出</button>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-stage" aria-hidden="true">
+          <div class="axis axis-top"></div>
+          <div class="axis axis-bottom"></div>
+
+          <div class="bars">
+            <span style="--h: 58%"></span>
+            <span style="--h: 76%"></span>
+            <span style="--h: 94%"></span>
+            <span style="--h: 48%"></span>
+          </div>
+          <div class="score-badge">71%</div>
+
+          <svg class="spark-path" viewBox="0 0 360 140" fill="none">
+            <path class="spark-line" d="M20 104 L338 18" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+            <g class="spark-nodes" fill="currentColor">
+              <circle cx="20" cy="104" r="13"/>
+              <circle cx="338" cy="18" r="15"/>
+            </g>
+            <g class="spark-dots" fill="currentColor">
+              <circle cx="48" cy="86" r="3"/>
+              <circle cx="70" cy="92" r="4"/>
+              <circle cx="82" cy="70" r="3"/>
+              <circle cx="104" cy="76" r="5"/>
+              <circle cx="120" cy="56" r="3"/>
+              <circle cx="132" cy="86" r="3"/>
+              <circle cx="148" cy="46" r="4"/>
+              <circle cx="158" cy="72" r="3"/>
+              <circle cx="174" cy="58" r="3"/>
+              <circle cx="188" cy="38" r="5"/>
+              <circle cx="198" cy="78" r="4"/>
+              <circle cx="212" cy="48" r="3"/>
+              <circle cx="226" cy="36" r="4"/>
+              <circle cx="238" cy="66" r="3"/>
+              <circle cx="252" cy="31" r="4"/>
+              <circle cx="266" cy="54" r="3"/>
+              <circle cx="282" cy="25" r="3"/>
+              <circle cx="302" cy="38" r="3"/>
+              <circle cx="320" cy="16" r="4"/>
+              <circle cx="330" cy="14" r="4"/>
+            </g>
+          </svg>
+
+          <svg class="wave-path" viewBox="0 0 260 160" fill="none">
+            <path class="wave-line" d="M8 78 C48 8 82 8 116 78 C150 148 184 148 224 78" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+            <line class="wave-guide" x1="224" y1="18" x2="224" y2="140" stroke="currentColor" stroke-width="2" stroke-dasharray="7 8"/>
+            <circle class="wave-node" cx="224" cy="78" r="20" fill="currentColor"/>
+          </svg>
+        </div>
+
+        <div class="hero-copy">
+          <h1 id="hero-title">
+            <span class="title-line title-line-top">Learn</span>
+            <span class="title-line title-line-bottom">
+              <span>by</span>
+              <span class="logic-card" aria-hidden="true">
+                <span class="logic-chip chip-loop">
+                  <span class="logic-icon">↔</span>
+                  <em>while</em>
+                  <span class="logic-word">learning</span>
+                  <span class="logic-caret"></span>
+                </span>
+                <span class="logic-chip chip-if">
+                  <em>if</em>
+                  <span class="logic-word">doing</span>
+                  <span class="logic-caret"></span>
+                </span>
+                <span class="logic-chip chip-keep">
+                  <em>keep</em>
+                  <span class="logic-word">growing</span>
+                  <span class="logic-caret"></span>
+                </span>
+                <span class="logic-chip chip-else"><em>else</em></span>
+                <span class="logic-chip chip-bummer">bummer</span>
+              </span>
+              <span>doing</span>
+            </span>
+          </h1>
+        </div>
+      </section>
+
+      <nav class="subject-dock" aria-label="学习方向">
+        <a href="#chinese"><span class="mark data-mark"></span>语文</a>
+        <a href="#math"><span class="mark math-mark"></span>数学</a>
+        <a href="#english"><span class="mark cs-mark"></span>英语</a>
+        <a href="#physics"><span class="mark ai-mark"></span>物理</a>
+        <a href="#chemistry"><span class="mark science-mark"></span>化学</a>
+      </nav>
+
+      <section class="subject-sections" aria-label="学科内容入口">
+        <article class="subject-panel chinese-panel" id="chinese">
+          <div class="subject-copy">
+            <p class="subject-name">语文线</p>
+            <h2>语文</h2>
+            <p>古诗文、现代文阅读和作文素材，按篇目、句法和易错点整理。</p>
+          </div>
+          <div class="subject-visual chinese-visual" aria-hidden="true">
+            <div class="manuscript-sheet">
+              <span>诗</span>
+              <span>文</span>
+              <span>读</span>
+              <span>写</span>
+            </div>
+            <div class="annotation-card">
+              <b>背诵线索</b>
+              <i>意象</i>
+              <i>句式</i>
+              <i>易错字</i>
+            </div>
+          </div>
+        </article>
+
+        <article class="subject-panel math-panel" id="math">
+          <div class="subject-copy">
+            <p class="subject-name">数学线</p>
+            <h2>数学</h2>
+            <p>函数、几何、公式和错题复盘，把题型拆成图像、步骤和结论。</p>
+          </div>
+          <div class="subject-visual math-visual" aria-hidden="true">
+            <svg viewBox="0 0 520 360" fill="none">
+              <path class="math-grid-line" d="M60 54H480M60 114H480M60 174H480M60 234H480M60 294H480"/>
+              <path class="math-grid-line" d="M100 30V316M180 30V316M260 30V316M340 30V316M420 30V316"/>
+              <path class="axis-line" d="M68 276H486M260 32V324"/>
+              <path class="parabola-line" d="M95 84C155 274 363 274 425 84"/>
+              <circle cx="181" cy="220" r="18"/>
+              <circle cx="339" cy="220" r="18"/>
+            </svg>
+            <div class="formula-card">f(x) = ax² + bx + c</div>
+          </div>
+        </article>
+
+        <article class="subject-panel english-panel" id="english">
+          <div class="subject-copy">
+            <p class="subject-name">英语线</p>
+            <h2>英语</h2>
+            <p>单词、句型、阅读和写作积累，放进短卡片和真实语境里反复用。</p>
+          </div>
+          <div class="subject-visual english-visual" aria-hidden="true">
+            <div class="word-stack">
+              <span>阅读</span>
+              <span>表达</span>
+              <span>写作</span>
+              <span>复盘</span>
+            </div>
+            <div class="sentence-card">
+              <b>句型卡片</b>
+              <span>能解释</span>
+              <span>会使用</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="subject-panel physics-panel" id="physics">
+          <div class="subject-copy">
+            <p class="subject-name">物理线</p>
+            <h2>物理</h2>
+            <p>力、运动、电路和实验现象，先画关系，再把公式放回题目。</p>
+          </div>
+          <div class="subject-visual physics-visual" aria-hidden="true">
+            <div class="vector-board">
+              <span class="mass-dot"></span>
+              <span class="force force-a">F</span>
+              <span class="force force-b">v</span>
+              <span class="force force-c">g</span>
+            </div>
+            <div class="wave-board">
+              <span></span>
+            </div>
+          </div>
+        </article>
+
+        <article class="subject-panel chemistry-panel" id="chemistry">
+          <div class="subject-copy">
+            <p class="subject-name">化学线</p>
+            <h2>化学</h2>
+            <p>元素、周期、族和记忆线索，从一张图开始。</p>
+            <a class="subject-link" href="./ptoe/" aria-label="打开元素周期表速记图谱">元素周期表速记图谱</a>
+          </div>
+          <div class="subject-visual chemistry-visual" aria-hidden="true">
+            <div class="element-grid">
+              <span class="element-tile tile-green"><small>1</small><b>H</b><i>氢</i></span>
+              <span class="element-tile tile-gold"><small>2</small><b>He</b><i>氦</i></span>
+              <span class="element-tile tile-purple"><small>3</small><b>Li</b><i>锂</i></span>
+              <span class="element-tile tile-blue"><small>4</small><b>Be</b><i>铍</i></span>
+              <span class="element-tile tile-orange"><small>5</small><b>B</b><i>硼</i></span>
+              <span class="element-tile tile-green"><small>6</small><b>C</b><i>碳</i></span>
+              <span class="element-tile tile-blue"><small>7</small><b>N</b><i>氮</i></span>
+              <span class="element-tile tile-orange"><small>8</small><b>O</b><i>氧</i></span>
+              <span class="element-tile tile-purple"><small>9</small><b>F</b><i>氟</i></span>
+              <span class="element-tile tile-gold"><small>10</small><b>Ne</b><i>氖</i></span>
+              <span class="element-tile tile-blue"><small>11</small><b>Na</b><i>钠</i></span>
+              <span class="element-tile tile-green"><small>17</small><b>Cl</b><i>氯</i></span>
+            </div>
+          </div>
+        </article>
+      </section>
+
+    </main>
+
+    <footer class="site-footer">
+      <p>学习搭子 | Learn by doing</p>
+      <a href="https://xuexidazi.site/">xuexidazi.site</a>
+    </footer>
+
+    <dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-title">
+      <div class="auth-shell">
+        <div class="auth-visual" aria-hidden="true">
+          <div class="auth-brand">学习搭子 | Learn by doing</div>
+          <div class="auth-line"></div>
+          <div class="auth-mini-bars">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="auth-checklist">
+            <span>工具</span>
+            <span>资料</span>
+            <span>方法</span>
+          </div>
+        </div>
+
+        <section class="auth-panel">
+          <button class="auth-close" type="button" data-auth-close aria-label="关闭">×</button>
+          <div class="auth-heading">
+            <h2 id="auth-title">继续学习</h2>
+            <p id="auth-subtitle">登录后同步资料、工具和练习记录。</p>
+          </div>
+
+          <div class="auth-tabs" role="tablist" aria-label="登录注册">
+            <button type="button" role="tab" aria-selected="true" data-auth-tab="login">登录</button>
+            <button type="button" role="tab" aria-selected="false" data-auth-tab="register">注册</button>
+          </div>
+
+          <p class="auth-message" data-auth-message hidden></p>
+
+          <form class="auth-form" data-auth-form="login" novalidate>
+            <label>
+              邮箱
+              <input name="email" type="email" autocomplete="email" required placeholder="你的邮箱">
+            </label>
+            <label>
+              密码
+              <input name="password" type="password" autocomplete="current-password" required minlength="8" placeholder="至少 8 位">
+            </label>
+            <button class="auth-submit" type="submit">登录</button>
+            <p class="auth-switch">还没有账号？<button type="button" data-auth-tab="register">立即注册</button></p>
+          </form>
+
+          <form class="auth-form" data-auth-form="register" novalidate hidden>
+            <label>
+              称呼
+              <input name="displayName" type="text" autocomplete="name" maxlength="10" placeholder="你的称呼">
+            </label>
+            <label>
+              邮箱
+              <input name="email" type="email" autocomplete="email" required placeholder="你的邮箱">
+            </label>
+            <label>
+              密码
+              <input name="password" type="password" autocomplete="new-password" required minlength="8" placeholder="至少 8 位">
+            </label>
+            <label>
+              确认密码
+              <input name="confirmPassword" type="password" autocomplete="new-password" required minlength="8" placeholder="再次输入密码">
+            </label>
+            <button class="auth-submit" type="submit">注册</button>
+            <p class="auth-switch">已有账号？<button type="button" data-auth-tab="login">返回登录</button></p>
+          </form>
+        </section>
+      </div>
+    </dialog>
+    <script src="script.js"></script>
+  </body>
+</html>
