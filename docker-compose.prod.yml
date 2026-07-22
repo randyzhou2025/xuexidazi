@@ -1,10 +1,11 @@
 # 生产部署（单容器：主站 + API + padmin）
-# 使用：
-#   cp .env.prod.example .env.prod   # 填写密钥与数据库 URL
-#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# 方案 B：加入各项目 Docker 网络，直连 Postgres 容器（无需映射宿主机端口）
 #
-# 数据库通常已在 ExamMaster / PeriodicTable / GotIt 的 compose 中运行；
-# 同机部署时在 .env.prod 里把 host 写成 host.docker.internal（Linux 已配置 extra_hosts）。
+# 使用：
+#   cp .env.prod.example .env.prod
+#   # 确认网络名（与下方默认不一致时写入 .env.prod）：
+#   #   docker inspect exam_postgres --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}'
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 
 services:
   xuexidazi:
@@ -14,8 +15,10 @@ services:
     image: xuexidazi:latest
     container_name: xuexidazi
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    networks:
+      - exam_net
+      - ptoe_net
+      - gotit_net
     environment:
       PORT: "8090"
       HOST: 0.0.0.0
@@ -29,3 +32,14 @@ services:
       GOTIT_DATABASE_URL: ${GOTIT_DATABASE_URL:-}
     ports:
       - "${XUEXIDAZI_BIND:-127.0.0.1:8090}:8090"
+
+networks:
+  exam_net:
+    external: true
+    name: ${EXAM_DOCKER_NETWORK:-exammaster_default}
+  ptoe_net:
+    external: true
+    name: ${PTOE_DOCKER_NETWORK:-periodictable_default}
+  gotit_net:
+    external: true
+    name: ${GOTIT_DOCKER_NETWORK:-gotit_default}
