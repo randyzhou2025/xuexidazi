@@ -1,0 +1,31 @@
+# 生产部署（单容器：主站 + API + padmin）
+# 使用：
+#   cp .env.prod.example .env.prod   # 填写密钥与数据库 URL
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# 数据库通常已在 ExamMaster / PeriodicTable / GotIt 的 compose 中运行；
+# 同机部署时在 .env.prod 里把 host 写成 host.docker.internal（Linux 已配置 extra_hosts）。
+
+services:
+  xuexidazi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xuexidazi:latest
+    container_name: xuexidazi
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PORT: "8090"
+      HOST: 0.0.0.0
+      XUEXIDAZI_DATABASE_URL: ${XUEXIDAZI_DATABASE_URL:?set XUEXIDAZI_DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET min 16 chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      PTOE_DATABASE_URL: ${PTOE_DATABASE_URL:-}
+      PTOE_SESSION_SECRET: ${PTOE_SESSION_SECRET:-}
+      PTOE_IDLE_RELEASE_DAYS: ${PTOE_IDLE_RELEASE_DAYS:-30}
+      PTOE_MAX_DEVICES_DEFAULT: ${PTOE_MAX_DEVICES_DEFAULT:-2}
+      GOTIT_DATABASE_URL: ${GOTIT_DATABASE_URL:-}
+    ports:
+      - "${XUEXIDAZI_BIND:-127.0.0.1:8090}:8090"

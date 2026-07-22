@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-server
+.git
+.env
+.env.*
+!.env.example
+!.env.prod.example
+*.tsbuildinfo
+.DS_Store
+.tmp-mobile
