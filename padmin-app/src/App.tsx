@@ -321,6 +321,7 @@ function Dashboard() {
     activePtoeSessions: 0,
     gotitUsers: 0,
     gotitTodayActive: 0,
+    gotitTodayRegistered: 0,
   });
   const [error, setError] = useState("");
   useEffect(() => {
@@ -338,6 +339,7 @@ function Dashboard() {
           <Card><Statistic title="周期表有效会话" value={data.activePtoeSessions} /></Card>
           <Card><Statistic title="课本单词通用户" value={data.gotitUsers} /></Card>
           <Card><Statistic title="课本单词通今日活跃" value={data.gotitTodayActive} /></Card>
+          <Card><Statistic title="课本单词通今日注册" value={data.gotitTodayRegistered} /></Card>
         </div>
         <Alert
           type="info"
@@ -677,6 +679,8 @@ interface GotItUserRow {
   nickname: string;
   avatarUrl: string;
   phoneBound: boolean;
+  lastActiveIp: string | null;
+  lastActiveLocation: string | null;
   masteredCount: number;
   weakCount: number;
   selectedUnitId: string;
@@ -709,15 +713,27 @@ function GotItUsers() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState({ totalUsers: 0, todayActiveCount: 0, todayRegisteredCount: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
       if (query) params.set("q", query);
-      const data = await api<{ users: GotItUserRow[]; total: number }>(`/gotit/users?${params}`);
+      const data = await api<{
+        users: GotItUserRow[];
+        total: number;
+        totalUsers: number;
+        todayActiveCount: number;
+        todayRegisteredCount: number;
+      }>(`/gotit/users?${params}`);
       setRows(data.users);
       setTotal(data.total);
+      setStats({
+        totalUsers: data.totalUsers,
+        todayActiveCount: data.todayActiveCount,
+        todayRegisteredCount: data.todayRegisteredCount,
+      });
     } catch (error) {
       message.error(error instanceof Error ? error.message : "加载失败");
     } finally {
@@ -733,7 +749,7 @@ function GotItUsers() {
     <>
       <PageHead
         title="课本单词通用户"
-        desc="GotIt 小程序用户列表（openid 脱敏展示）。"
+        desc={`总用户数 ${stats.totalUsers} 人，今日注册 ${stats.todayRegisteredCount} 人，今日活跃 ${stats.todayActiveCount} 人。`}
         extra={<Space><Input.Search allowClear placeholder="搜索昵称/openid" onSearch={(v) => { setPage(1); setQuery(v); }} /><Button onClick={() => void load()}>刷新</Button></Space>}
       />
       <Table
@@ -765,13 +781,15 @@ function GotItUsers() {
             width: 168,
             render: (v: string | null) => formatTime(v),
           },
+          { title: "IP", dataIndex: "lastActiveIp", width: 140, className: "mono", render: (v: string | null) => v || "—" },
+          { title: "区域", dataIndex: "lastActiveLocation", width: 160, render: (v: string | null) => v || "—" },
           { title: "OpenID", dataIndex: "openidMasked", className: "mono" },
           { title: "手机号", render: (_, r) => (r.phoneBound ? "已绑定" : "—") },
           { title: "注册时间", dataIndex: "createdAt", render: formatTime },
           { title: "更新时间", dataIndex: "updatedAt", render: formatTime },
         ]}
-        pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage }}
-        scroll={{ x: 1100 }}
+        pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage, showTotal: (value) => `共 ${value} 条` }}
+        scroll={{ x: 1280 }}
       />
     </>
   );

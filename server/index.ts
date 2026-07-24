@@ -353,7 +353,7 @@ app.get("/padmin/api/auth/me", async (request) => ({ user: request.adminUser }))
 
 app.get("/padmin/api/summary", async () => {
   const today = shanghaiDateString();
-  const [users, active, ptoeCodes, ptoeSessions, gotitUsers, gotitTodayActive] = await Promise.all([
+  const [users, active, ptoeCodes, ptoeSessions, gotitUsers, gotitTodayActive, gotitTodayRegistered] = await Promise.all([
     coreSql`select count(*)::int as total from users`,
     coreSql`select count(*)::int as total from user_daily_activity where activity_date = ${today}`,
     ptoeSql ? ptoeSql`select count(*)::int as total from license_codes` : Promise.resolve([{ total: 0 }]),
@@ -361,6 +361,9 @@ app.get("/padmin/api/summary", async () => {
     gotitSql ? gotitSql`select count(*)::int as total from users` : Promise.resolve([{ total: 0 }]),
     gotitSql
       ? gotitSql`select count(distinct user_id)::int as total from user_daily_stats where stat_date = ${today}::date`
+      : Promise.resolve([{ total: 0 }]),
+    gotitSql
+      ? gotitSql`select count(*)::int as total from users where (created_at at time zone 'Asia/Shanghai')::date = ${today}::date`
       : Promise.resolve([{ total: 0 }]),
   ]);
   return {
@@ -370,6 +373,7 @@ app.get("/padmin/api/summary", async () => {
     activePtoeSessions: ptoeSessions[0]?.total ?? 0,
     gotitUsers: gotitUsers[0]?.total ?? 0,
     gotitTodayActive: gotitTodayActive[0]?.total ?? 0,
+    gotitTodayRegistered: gotitTodayRegistered[0]?.total ?? 0,
   };
 });
 
@@ -737,6 +741,8 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
           u.nickname,
           u.avatar_url,
           u.phone_number,
+          u.last_active_ip,
+          u.last_active_location,
           u.created_at,
           u.updated_at,
           coalesce(jsonb_array_length(up.mastered_word_ids), 0) as mastered_count,
@@ -757,6 +763,8 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
           u.nickname,
           u.avatar_url,
           u.phone_number,
+          u.last_active_ip,
+          u.last_active_location,
           u.created_at,
           u.updated_at,
           coalesce(jsonb_array_length(up.mastered_word_ids), 0) as mastered_count,
@@ -775,6 +783,12 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
         where nickname ilike ${pattern} or openid ilike ${pattern}
       `
     : await sql`select count(*)::int as total from users`;
+  const today = shanghaiDateString();
+  const [todayActive, todayRegistered, totalUsers] = await Promise.all([
+    sql`select count(distinct user_id)::int as total from user_daily_stats where stat_date = ${today}::date`,
+    sql`select count(*)::int as total from users where (created_at at time zone 'Asia/Shanghai')::date = ${today}::date`,
+    sql`select count(*)::int as total from users`,
+  ]);
   const total = totals[0]?.total ?? 0;
   return {
     users: rows.map((row) => ({
@@ -783,6 +797,8 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
       nickname: row.nickname,
       avatarUrl: row.avatar_url ?? "",
       phoneBound: Boolean(row.phone_number),
+      lastActiveIp: row.last_active_ip ?? null,
+      lastActiveLocation: row.last_active_location ?? null,
       masteredCount: Number(row.mastered_count ?? 0),
       weakCount: Number(row.weak_count ?? 0),
       selectedUnitId: String(row.selected_unit_id ?? ""),
@@ -792,6 +808,9 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
       updatedAt: toIso(row.updated_at),
     })),
     total,
+    totalUsers: totalUsers[0]?.total ?? 0,
+    todayActiveCount: todayActive[0]?.total ?? 0,
+    todayRegisteredCount: todayRegistered[0]?.total ?? 0,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
