@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /padmin/
+
+Sitemap: https://xuexidazi.site/sitemap.xml

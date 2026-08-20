@@ -258,6 +258,10 @@ async function sendStatic(reply: FastifyReply, file: string): Promise<void> {
         ? "text/css; charset=utf-8"
       : ext === ".js"
         ? "text/javascript; charset=utf-8"
+      : ext === ".txt"
+        ? "text/plain; charset=utf-8"
+      : ext === ".xml"
+        ? "application/xml; charset=utf-8"
         : ext === ".png"
           ? "image/png"
           : ext === ".jpg" || ext === ".jpeg"
@@ -881,6 +885,8 @@ app.get("/padmin/api/gotit/feedbacks", async (request, reply) => {
   };
 });
 
+app.get("/robots.txt", async (_request, reply) => sendStatic(reply, path.join(projectRoot, "robots.txt")));
+app.get("/sitemap.xml", async (_request, reply) => sendStatic(reply, path.join(projectRoot, "sitemap.xml")));
 app.get("/", async (_request, reply) => sendStatic(reply, path.join(projectRoot, "index.html")));
 app.get("/styles.css", async (_request, reply) => sendStatic(reply, path.join(projectRoot, "styles.css")));
 app.get("/script.js", async (_request, reply) => sendStatic(reply, path.join(projectRoot, "script.js")));

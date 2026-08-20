@@ -779,6 +779,18 @@ a:focus-visible {
   transform: translateX(-1%);
 }
 
+.hero-lead {
+  margin: 28px 0 0;
+  max-width: min(100%, 40rem);
+  padding: 0 16px;
+  color: var(--muted);
+  font-size: clamp(0.92rem, 2.6vw, 1.12rem);
+  font-weight: 800;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
 .subject-dock {
   position: sticky;
   top: 0;
@@ -1713,8 +1725,25 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 20px;
   color: var(--muted);
   font-weight: 750;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.site-footer nav a {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.site-footer nav a:hover {
+  color: var(--ink);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -2311,15 +2340,31 @@ a:focus-visible {
   .subject-dock {
     position: sticky;
     top: 0;
-    grid-template-columns: 1fr;
-    min-height: auto;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    min-height: 58px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .subject-dock::-webkit-scrollbar {
+    display: none;
   }
 
   .subject-dock a {
+    flex: 0 0 auto;
     justify-content: flex-start;
     min-height: 58px;
     padding: 0 18px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: none;
+    border-right: 1px solid var(--line);
+  }
+
+  .subject-dock a:last-child {
+    border-right: none;
   }
 
   .level-cards {
