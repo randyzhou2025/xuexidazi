@@ -13,6 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
 const padminDist = path.join(projectRoot, "dist/padmin");
 const logoDir = path.join(projectRoot, "logo");
+const assetsDir = path.join(projectRoot, "assets");
 
 const coreDatabaseUrl = process.env.XUEXIDAZI_DATABASE_URL ?? process.env.EXAM_DATABASE_URL;
 const jwtSecret = process.env.JWT_SECRET ?? "";
@@ -887,6 +888,12 @@ app.get("/logo/*", async (request, reply) => {
   const rel = (request.params as { "*": string })["*"] || "";
   const requested = path.normalize(path.join(logoDir, rel));
   if (requested.startsWith(`${logoDir}${path.sep}`) && existsSync(requested)) return sendStatic(reply, requested);
+  return reply.code(404).send({ error: "Not found" });
+});
+app.get("/assets/*", async (request, reply) => {
+  const rel = (request.params as { "*": string })["*"] || "";
+  const requested = path.normalize(path.join(assetsDir, rel));
+  if (requested.startsWith(`${assetsDir}${path.sep}`) && existsSync(requested)) return sendStatic(reply, requested);
   return reply.code(404).send({ error: "Not found" });
 });
 

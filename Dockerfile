@@ -23,6 +23,7 @@ COPY --from=builder /app/dist-server ./dist-server
 COPY --from=builder /app/dist/padmin ./dist/padmin
 COPY index.html styles.css script.js ./
 COPY logo ./logo
+COPY assets ./assets
 
 EXPOSE 8090
 
