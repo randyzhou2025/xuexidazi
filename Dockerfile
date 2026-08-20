@@ -21,7 +21,7 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist-server ./dist-server
 COPY --from=builder /app/dist/padmin ./dist/padmin
-COPY index.html styles.css script.js robots.txt sitemap.xml ./
+COPY index.html styles.css script.js robots.txt sitemap.xml site.webmanifest ./
 COPY logo ./logo
 COPY assets ./assets
 
