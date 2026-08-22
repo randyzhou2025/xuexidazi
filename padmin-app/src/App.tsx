@@ -261,6 +261,7 @@ function AdminShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }
     { type: "group" as const, label: "课本单词通 工具" },
     { key: "/gotit/users", icon: <TeamOutlined />, label: <Link to="/gotit/users">用户管理</Link> },
     { key: "/gotit/daily-activity", icon: <BarChartOutlined />, label: <Link to="/gotit/daily-activity">学习活跃</Link> },
+    { key: "/gotit/usage-stats", icon: <DashboardOutlined />, label: <Link to="/gotit/usage-stats">使用统计</Link> },
     { key: "/gotit/feedbacks", icon: <FileTextOutlined />, label: <Link to="/gotit/feedbacks">意见反馈</Link> },
   ];
 
@@ -304,6 +305,7 @@ function AdminShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }
             <Route path="/ptoe/logs" element={<PtoeLogs />} />
             <Route path="/gotit/users" element={<GotItUsers />} />
             <Route path="/gotit/daily-activity" element={<GotItDailyActivity />} />
+            <Route path="/gotit/usage-stats" element={<GotItUsageStats />} />
             <Route path="/gotit/feedbacks" element={<GotItFeedbacks />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
@@ -685,6 +687,7 @@ interface GotItUserRow {
   weakCount: number;
   selectedUnitId: string;
   courseSetupCompleted: boolean;
+  currentThemeName: string;
   progressUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -775,6 +778,7 @@ function GotItUsers() {
             ellipsis: true,
             render: (v: string) => v || "—",
           },
+          { title: "当前主题", dataIndex: "currentThemeName", width: 110 },
           {
             title: "进度同步",
             dataIndex: "progressUpdatedAt",
@@ -824,6 +828,145 @@ function GotItDailyActivity() {
         pagination={{ pageSize: PAGE_SIZE }}
         scroll={{ x: 900 }}
       />
+    </>
+  );
+}
+
+interface GotItUsageEvent {
+  id: string;
+  eventName: string;
+  properties: Record<string, string | number | boolean | null>;
+  nickname: string;
+  occurredAt: string;
+}
+
+interface GotItUsageStatsPayload {
+  date: string;
+  analyticsEnabled: boolean;
+  counts: Record<string, number>;
+  exportModes: Record<string, number>;
+  themes: Array<{ themeId: string; themeName: string; users: number }>;
+  recentEvents: GotItUsageEvent[];
+}
+
+const gotItEventLabels: Record<string, string> = {
+  theme_selected: "选择主题",
+  home_export_click: "首页导出入口",
+  wordlist_export_click: "导出词表",
+  weakbook_click: "进入生词本",
+  dictation_start: "开始听写",
+  unit_wordlist_click: "本单元词表",
+  meaning_self_test_click: "释义自测",
+};
+
+function usageEventDetails(event: GotItUsageEvent): string {
+  const p = event.properties;
+  if (event.eventName === "dictation_start") {
+    const prompt = p.prompt === "english" ? "英文单词" : "中文释义";
+    const mode = p.mode === "paper" ? "纸笔默写" : p.mode === "online" ? "在线输入" : "释义自测";
+    const order = p.order === "shuffle" ? "乱序" : "顺序";
+    return `${prompt} · ${mode} · ${p.wordCount ?? 0}词 · ${p.intervalSeconds ?? 0}秒 · ${order} · ${p.repeatCount ?? 1}遍`;
+  }
+  if (event.eventName === "wordlist_export_click") {
+    const mode = p.mode === "chinese" ? "中文词表" : p.mode === "english" ? "英文词表" : "单词表";
+    return `${mode} · ${p.wordCount ?? 0}词${p.shuffled ? " · 乱序" : ""}`;
+  }
+  if (event.eventName === "theme_selected") return String(p.themeName ?? p.themeId ?? "—");
+  return [p.bookName, p.unitName, p.source].filter(Boolean).join(" · ") || "—";
+}
+
+function GotItUsageStats() {
+  const [date, setDate] = useState(dayjs());
+  const [data, setData] = useState<GotItUsageStatsPayload | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const load = useCallback(() => {
+    setLoading(true);
+    api<GotItUsageStatsPayload>(`/gotit/usage-stats?date=${date.format("YYYY-MM-DD")}`)
+      .then(setData)
+      .catch((e) => message.error(e.message))
+      .finally(() => setLoading(false));
+  }, [date]);
+  useEffect(() => void load(), [load]);
+
+  async function toggleAnalytics(enabled: boolean) {
+    setSwitching(true);
+    try {
+      await api<{ analyticsEnabled: boolean }>("/gotit/analytics-config", {
+        method: "PATCH",
+        body: JSON.stringify({ enabled }),
+      });
+      setData((previous) => previous ? { ...previous, analyticsEnabled: enabled } : previous);
+      message.success(enabled ? "事件上传已开启" : "事件上传已关闭");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "配置更新失败");
+    } finally {
+      setSwitching(false);
+    }
+  }
+
+  const counts = data?.counts ?? {};
+  const exports = data?.exportModes ?? {};
+  const metricCards = [
+    ["首页导出入口", counts.home_export_click ?? 0],
+    ["实际导出", counts.wordlist_export_click ?? 0],
+    ["进入生词本", counts.weakbook_click ?? 0],
+    ["开始听写", counts.dictation_start ?? 0],
+    ["本单元词表", counts.unit_wordlist_click ?? 0],
+    ["释义自测", counts.meaning_self_test_click ?? 0],
+  ] as const;
+
+  return (
+    <>
+      <PageHead
+        title="课本单词通使用统计"
+        desc="事件异步上传；关闭后服务端立即停止写入，不影响小程序任何操作。"
+        extra={<Space><DatePicker value={date} onChange={(v) => v && setDate(v)} /><Button onClick={load}>查询</Button></Space>}
+      />
+      <Card style={{ marginBottom: 16 }}>
+        <Space size="middle" wrap>
+          <Typography.Text strong>事件上传</Typography.Text>
+          <Switch checked={data?.analyticsEnabled ?? true} loading={switching} onChange={toggleAnalytics} />
+          <Tag color={data?.analyticsEnabled === false ? "default" : "green"}>{data?.analyticsEnabled === false ? "已关闭" : "运行中"}</Tag>
+          <Typography.Text type="secondary">关闭后客户端不入队，服务端也拒绝写入。</Typography.Text>
+        </Space>
+      </Card>
+      <div className="usage-metrics">
+        {metricCards.map(([label, value]) => <Card key={label} loading={loading}><Statistic title={label} value={value} suffix="次" /></Card>)}
+      </div>
+      <div className="usage-two-column">
+        <Card title="导出类型" loading={loading}>
+          <Space direction="vertical" style={{ width: "100%" }}>
+            <Statistic title="单词表" value={exports.wordlist ?? 0} suffix="次" />
+            <Statistic title="中文词表" value={exports.chinese ?? 0} suffix="次" />
+            <Statistic title="英文词表" value={exports.english ?? 0} suffix="次" />
+          </Space>
+        </Card>
+        <Card title="用户当前主题" loading={loading}>
+          <Table
+            rowKey={(row) => row.themeId || row.themeName}
+            size="small"
+            pagination={false}
+            dataSource={data?.themes ?? []}
+            columns={[{ title: "主题", dataIndex: "themeName" }, { title: "用户数", dataIndex: "users", width: 100 }]}
+          />
+        </Card>
+      </div>
+      <Card title="事件明细" style={{ marginTop: 16 }}>
+        <Table
+          rowKey="id"
+          loading={loading}
+          dataSource={data?.recentEvents ?? []}
+          columns={[
+            { title: "时间", dataIndex: "occurredAt", width: 180, render: formatTime },
+            { title: "用户", dataIndex: "nickname", width: 150 },
+            { title: "事件", dataIndex: "eventName", width: 130, render: (value: string) => gotItEventLabels[value] ?? value },
+            { title: "参数", render: (_, row) => usageEventDetails(row) },
+          ]}
+          pagination={{ pageSize: PAGE_SIZE }}
+          scroll={{ x: 850 }}
+        />
+      </Card>
     </>
   );
 }

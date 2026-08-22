@@ -756,9 +756,17 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
           coalesce(jsonb_array_length(up.saved_weak_word_ids), 0) as weak_count,
           coalesce(up.selected_unit_id, '') as selected_unit_id,
           coalesce(up.course_setup_completed, false) as course_setup_completed,
+          theme.current_theme_name,
           up.updated_at as progress_updated_at
         from users u
         left join user_progress up on up.user_id = u.id
+        left join lateral (
+          select properties->>'themeName' as current_theme_name
+          from usage_events
+          where user_id = u.id and event_name = 'theme_selected'
+          order by occurred_at desc
+          limit 1
+        ) theme on true
         where u.nickname ilike ${pattern} or u.openid ilike ${pattern}
         order by u.created_at desc
         limit ${pageSize} offset ${offset}
@@ -778,9 +786,17 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
           coalesce(jsonb_array_length(up.saved_weak_word_ids), 0) as weak_count,
           coalesce(up.selected_unit_id, '') as selected_unit_id,
           coalesce(up.course_setup_completed, false) as course_setup_completed,
+          theme.current_theme_name,
           up.updated_at as progress_updated_at
         from users u
         left join user_progress up on up.user_id = u.id
+        left join lateral (
+          select properties->>'themeName' as current_theme_name
+          from usage_events
+          where user_id = u.id and event_name = 'theme_selected'
+          order by occurred_at desc
+          limit 1
+        ) theme on true
         order by u.created_at desc
         limit ${pageSize} offset ${offset}
       `;
@@ -810,6 +826,7 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
       weakCount: Number(row.weak_count ?? 0),
       selectedUnitId: String(row.selected_unit_id ?? ""),
       courseSetupCompleted: Boolean(row.course_setup_completed),
+      currentThemeName: row.current_theme_name ?? "—",
       progressUpdatedAt: toIso(row.progress_updated_at),
       createdAt: toIso(row.created_at),
       updatedAt: toIso(row.updated_at),
@@ -885,6 +902,86 @@ app.get("/padmin/api/gotit/feedbacks", async (request, reply) => {
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
+});
+
+app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const query = request.query as { date?: string };
+  const date = query.date && validDateOnly(query.date) ? query.date : shanghaiDateString();
+  const [configRows, counts, exportModes, themes, recentEvents] = await Promise.all([
+    sql`select value from app_config where key = 'analytics_enabled' limit 1`,
+    sql`
+      select event_name, count(*)::int as total
+      from usage_events
+      where (occurred_at at time zone 'Asia/Shanghai')::date = ${date}::date
+      group by event_name
+    `,
+    sql`
+      select coalesce(properties->>'mode', 'unknown') as mode, count(*)::int as total
+      from usage_events
+      where event_name = 'wordlist_export_click'
+        and (occurred_at at time zone 'Asia/Shanghai')::date = ${date}::date
+      group by properties->>'mode'
+    `,
+    sql`
+      with latest_theme as (
+        select distinct on (user_id)
+          user_id,
+          coalesce(properties->>'themeId', '') as theme_id,
+          coalesce(properties->>'themeName', '未知主题') as theme_name
+        from usage_events
+        where event_name = 'theme_selected'
+        order by user_id, occurred_at desc
+      )
+      select theme_id, theme_name, count(*)::int as users
+      from latest_theme
+      group by theme_id, theme_name
+      order by users desc, theme_name
+    `,
+    sql`
+      select e.id, e.event_name, e.properties, e.occurred_at, u.nickname
+      from usage_events e
+      inner join users u on u.id = e.user_id
+      where (e.occurred_at at time zone 'Asia/Shanghai')::date = ${date}::date
+      order by e.occurred_at desc
+      limit 100
+    `,
+  ]);
+
+  return {
+    date,
+    analyticsEnabled: configRows[0]?.value !== "false",
+    counts: Object.fromEntries(counts.map((row) => [String(row.event_name), Number(row.total)])),
+    exportModes: Object.fromEntries(exportModes.map((row) => [String(row.mode), Number(row.total)])),
+    themes: themes.map((row) => ({
+      themeId: row.theme_id,
+      themeName: row.theme_name,
+      users: Number(row.users),
+    })),
+    recentEvents: recentEvents.map((row) => ({
+      id: row.id,
+      eventName: row.event_name,
+      properties: row.properties ?? {},
+      nickname: row.nickname,
+      occurredAt: toIso(row.occurred_at),
+    })),
+  };
+});
+
+app.patch("/padmin/api/gotit/analytics-config", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const body = request.body as { enabled?: unknown };
+  if (typeof body.enabled !== "boolean") {
+    return reply.code(400).send({ error: "enabled 必须为布尔值" });
+  }
+  await sql`
+    insert into app_config (key, value)
+    values ('analytics_enabled', ${body.enabled ? "true" : "false"})
+    on conflict (key) do update set value = excluded.value
+  `;
+  return { analyticsEnabled: body.enabled };
 });
 
 app.get("/robots.txt", async (_request, reply) => sendStatic(reply, path.join(projectRoot, "robots.txt")));

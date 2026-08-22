@@ -83,6 +83,19 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+.usage-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.usage-two-column {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.7fr) minmax(360px, 1.3fr);
+  gap: 16px;
+}
+
 @media (max-width: 768px) {
   .padmin-content {
     padding: 16px;
@@ -90,5 +103,9 @@ body {
 
   .page-head {
     display: block;
+  }
+
+  .usage-two-column {
+    grid-template-columns: 1fr;
   }
 }
