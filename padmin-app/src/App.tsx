@@ -861,18 +861,19 @@ const gotItEventLabels: Record<string, string> = {
 
 function usageEventDetails(event: GotItUsageEvent): string {
   const p = event.properties;
+  const course = [p.publisherName, p.bookName, p.unitName].filter(Boolean).join(" · ");
   if (event.eventName === "dictation_start") {
     const prompt = p.prompt === "english" ? "英文单词" : "中文释义";
     const mode = p.mode === "paper" ? "纸笔默写" : p.mode === "online" ? "在线输入" : "释义自测";
     const order = p.order === "shuffle" ? "乱序" : "顺序";
-    return `${prompt} · ${mode} · ${p.wordCount ?? 0}词 · ${p.intervalSeconds ?? 0}秒 · ${order} · ${p.repeatCount ?? 1}遍`;
+    return [course, prompt, mode, `${p.wordCount ?? 0}词`, `${p.intervalSeconds ?? 0}秒`, order, `${p.repeatCount ?? 1}遍`].filter(Boolean).join(" · ");
   }
   if (event.eventName === "wordlist_export_click") {
     const mode = p.mode === "chinese" ? "中文词表" : p.mode === "english" ? "英文词表" : "单词表";
-    return `${mode} · ${p.wordCount ?? 0}词${p.shuffled ? " · 乱序" : ""}`;
+    return [course, mode, `${p.wordCount ?? 0}词`, p.shuffled ? "乱序" : ""].filter(Boolean).join(" · ");
   }
   if (event.eventName === "theme_selected") return String(p.themeName ?? p.themeId ?? "—");
-  return [p.bookName, p.unitName, p.source].filter(Boolean).join(" · ") || "—";
+  return [course, p.source].filter(Boolean).join(" · ") || "—";
 }
 
 function GotItUsageStats() {
