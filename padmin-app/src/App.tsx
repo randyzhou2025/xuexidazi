@@ -857,11 +857,25 @@ const gotItEventLabels: Record<string, string> = {
   dictation_start: "开始听写",
   unit_wordlist_click: "本单元词表",
   meaning_self_test_click: "释义自测",
+  classmates_tab_view: "同学",
+  classmate_invite_click: "邀请同学",
+  leaderboard_view: "排行榜",
 };
 
 function usageEventDetails(event: GotItUsageEvent): string {
   const p = event.properties;
   const course = [p.publisherName, p.bookName, p.unitName].filter(Boolean).join(" · ");
+  if (event.eventName === "classmate_invite_click") {
+    const sourceLabels: Record<string, string> = {
+      classmates_header: "同学页顶部",
+      classmates_empty: "同学页空状态",
+      leaderboard: "排行榜",
+      dictation_reward: "听写完成页",
+    };
+    return [sourceLabels[String(p.source)] ?? p.source, course].filter(Boolean).join(" · ") || "—";
+  }
+  if (event.eventName === "classmates_tab_view") return p.source === "tabbar" ? "底部导航" : "—";
+  if (event.eventName === "leaderboard_view") return p.source === "classmates_page" ? "同学页" : "—";
   if (event.eventName === "dictation_start") {
     const prompt = p.prompt === "english" ? "英文单词" : "中文释义";
     const mode = p.mode === "paper" ? "纸笔默写" : p.mode === "online" ? "在线输入" : "释义自测";
@@ -915,6 +929,9 @@ function GotItUsageStats() {
     ["开始听写", counts.dictation_start ?? 0],
     ["本单元词表", counts.unit_wordlist_click ?? 0],
     ["释义自测", counts.meaning_self_test_click ?? 0],
+    ["同学", counts.classmates_tab_view ?? 0],
+    ["邀请同学", counts.classmate_invite_click ?? 0],
+    ["排行榜", counts.leaderboard_view ?? 0],
   ] as const;
 
   return (
