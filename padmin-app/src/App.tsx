@@ -842,6 +842,9 @@ interface GotItUsageEvent {
 
 interface GotItUsageStatsPayload {
   date: string;
+  total: number;
+  page: number;
+  pageSize: number;
   analyticsEnabled: boolean;
   counts: Record<string, number>;
   exportModes: Record<string, number>;
@@ -892,17 +895,25 @@ function usageEventDetails(event: GotItUsageEvent): string {
 
 function GotItUsageStats() {
   const [date, setDate] = useState(dayjs());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [data, setData] = useState<GotItUsageStatsPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [switching, setSwitching] = useState(false);
-  const load = useCallback(() => {
+  useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
-    api<GotItUsageStatsPayload>(`/gotit/usage-stats?date=${date.format("YYYY-MM-DD")}`)
-      .then(setData)
-      .catch((e) => message.error(e.message))
-      .finally(() => setLoading(false));
-  }, [date]);
-  useEffect(() => void load(), [load]);
+    api<GotItUsageStatsPayload>(`/gotit/usage-stats?date=${date.format("YYYY-MM-DD")}&page=${page}&pageSize=${pageSize}`, { signal: controller.signal })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setData(result);
+        setPage(result.page);
+      })
+      .catch((e) => { if (!controller.signal.aborted) message.error(e.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [date, page, pageSize, refreshKey]);
 
   async function toggleAnalytics(enabled: boolean) {
     setSwitching(true);
@@ -939,7 +950,7 @@ function GotItUsageStats() {
       <PageHead
         title="课本单词通使用统计"
         desc="事件异步上传；关闭后服务端立即停止写入，不影响小程序任何操作。"
-        extra={<Space><DatePicker value={date} onChange={(v) => v && setDate(v)} /><Button onClick={load}>查询</Button></Space>}
+        extra={<Space><DatePicker value={date} onChange={(v) => { if (v) { setDate(v); setPage(1); } }} /><Button onClick={() => setRefreshKey((value) => value + 1)}>查询</Button></Space>}
       />
       <Card style={{ marginBottom: 16 }}>
         <Space size="middle" wrap>
@@ -970,7 +981,7 @@ function GotItUsageStats() {
           />
         </Card>
       </div>
-      <Card title="事件明细" style={{ marginTop: 16 }}>
+      <Card title="事件明细（所选日期全天）" style={{ marginTop: 16 }}>
         <Table
           rowKey="id"
           loading={loading}
@@ -981,7 +992,18 @@ function GotItUsageStats() {
             { title: "事件", dataIndex: "eventName", width: 130, render: (value: string) => gotItEventLabels[value] ?? value },
             { title: "参数", render: (_, row) => usageEventDetails(row) },
           ]}
-          pagination={{ defaultPageSize: PAGE_SIZE }}
+          pagination={{
+            current: page,
+            pageSize,
+            total: data?.total ?? 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            showTotal: (total) => `当天共 ${total} 条`,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPageSize === pageSize ? nextPage : 1);
+              setPageSize(nextPageSize);
+            },
+          }}
           scroll={{ x: 850 }}
         />
       </Card>

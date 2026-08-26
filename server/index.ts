@@ -907,9 +907,13 @@ app.get("/padmin/api/gotit/feedbacks", async (request, reply) => {
 app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
   const sql = requireGotit(reply);
   if (!sql) return;
-  const query = request.query as { date?: string };
+  const query = request.query as { date?: string; page?: string; pageSize?: string };
   const date = query.date && validDateOnly(query.date) ? query.date : shanghaiDateString();
-  const [configRows, counts, exportModes, themes, recentEvents] = await Promise.all([
+  const pageValue = Number(query.page ?? 1);
+  const sizeValue = Number(query.pageSize ?? 20);
+  const requestedPage = Number.isSafeInteger(pageValue) ? Math.max(1, pageValue) : 1;
+  const pageSize = Number.isSafeInteger(sizeValue) ? Math.min(100, Math.max(1, sizeValue)) : 20;
+  const [configRows, counts, exportModes, themes, totals] = await Promise.all([
     sql`select value from app_config where key = 'analytics_enabled' limit 1`,
     sql`
       select event_name, count(*)::int as total
@@ -940,17 +944,31 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
       order by users desc, theme_name
     `,
     sql`
-      select e.id, e.event_name, e.properties, e.occurred_at, u.nickname
+      select count(*)::int as total
       from usage_events e
       inner join users u on u.id = e.user_id
       where (e.occurred_at at time zone 'Asia/Shanghai')::date = ${date}::date
-      order by e.occurred_at desc
-      limit 100
     `,
   ]);
+  const total = Number(totals[0]?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const offset = (page - 1) * pageSize;
+  const recentEvents = await sql`
+    select e.id, e.event_name, e.properties, e.occurred_at, u.nickname
+    from usage_events e
+    inner join users u on u.id = e.user_id
+    where (e.occurred_at at time zone 'Asia/Shanghai')::date = ${date}::date
+    order by e.occurred_at desc, e.id desc
+    limit ${pageSize} offset ${offset}
+  `;
 
   return {
     date,
+    total,
+    page,
+    pageSize,
+    totalPages,
     analyticsEnabled: configRows[0]?.value !== "false",
     counts: Object.fromEntries(counts.map((row) => [String(row.event_name), Number(row.total)])),
     exportModes: Object.fromEntries(exportModes.map((row) => [String(row.mode), Number(row.total)])),
