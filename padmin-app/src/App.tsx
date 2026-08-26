@@ -981,7 +981,7 @@ function GotItUsageStats() {
             { title: "事件", dataIndex: "eventName", width: 130, render: (value: string) => gotItEventLabels[value] ?? value },
             { title: "参数", render: (_, row) => usageEventDetails(row) },
           ]}
-          pagination={{ pageSize: PAGE_SIZE }}
+          pagination={{ defaultPageSize: PAGE_SIZE }}
           scroll={{ x: 850 }}
         />
       </Card>
