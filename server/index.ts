@@ -914,7 +914,11 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
   const requestedPage = Number.isSafeInteger(pageValue) ? Math.max(1, pageValue) : 1;
   const pageSize = Number.isSafeInteger(sizeValue) ? Math.min(100, Math.max(1, sizeValue)) : 20;
   const [configRows, counts, exportModes, themes, totals] = await Promise.all([
-    sql`select value from app_config where key = 'analytics_enabled' limit 1`,
+    sql`
+      select key, value
+      from app_config
+      where key in ('analytics_enabled', 'feature_announcements_enabled')
+    `,
     sql`
       select event_name, count(*)::int as total
       from usage_events
@@ -951,6 +955,7 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
     `,
   ]);
   const total = Number(totals[0]?.total ?? 0);
+  const config = Object.fromEntries(configRows.map((row) => [String(row.key), String(row.value)]));
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(requestedPage, totalPages);
   const offset = (page - 1) * pageSize;
@@ -969,7 +974,8 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
     page,
     pageSize,
     totalPages,
-    analyticsEnabled: configRows[0]?.value !== "false",
+    analyticsEnabled: config.analytics_enabled !== "false",
+    featureAnnouncementsEnabled: config.feature_announcements_enabled !== "false",
     counts: Object.fromEntries(counts.map((row) => [String(row.event_name), Number(row.total)])),
     exportModes: Object.fromEntries(exportModes.map((row) => [String(row.mode), Number(row.total)])),
     themes: themes.map((row) => ({
@@ -1000,6 +1006,21 @@ app.patch("/padmin/api/gotit/analytics-config", async (request, reply) => {
     on conflict (key) do update set value = excluded.value
   `;
   return { analyticsEnabled: body.enabled };
+});
+
+app.patch("/padmin/api/gotit/feature-announcements-config", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const body = request.body as { enabled?: unknown };
+  if (typeof body.enabled !== "boolean") {
+    return reply.code(400).send({ error: "enabled 必须为布尔值" });
+  }
+  await sql`
+    insert into app_config (key, value)
+    values ('feature_announcements_enabled', ${body.enabled ? "true" : "false"})
+    on conflict (key) do update set value = excluded.value
+  `;
+  return { featureAnnouncementsEnabled: body.enabled };
 });
 
 app.get("/robots.txt", async (_request, reply) => sendStatic(reply, path.join(projectRoot, "robots.txt")));

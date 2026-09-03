@@ -846,6 +846,7 @@ interface GotItUsageStatsPayload {
   page: number;
   pageSize: number;
   analyticsEnabled: boolean;
+  featureAnnouncementsEnabled: boolean;
   counts: Record<string, number>;
   exportModes: Record<string, number>;
   themes: Array<{ themeId: string; themeName: string; users: number }>;
@@ -854,6 +855,9 @@ interface GotItUsageStatsPayload {
 
 const gotItEventLabels: Record<string, string> = {
   theme_selected: "选择主题",
+  feature_announcement_view: "新功能通知展示",
+  feature_announcement_dismiss: "新功能通知关闭",
+  feature_announcement_action: "新功能通知主按钮",
   home_export_click: "首页导出入口",
   home_word_match_click: "首页消消乐入口",
   wordlist_export_click: "导出词表",
@@ -902,6 +906,7 @@ function GotItUsageStats() {
   const [data, setData] = useState<GotItUsageStatsPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [switchingAnnouncements, setSwitchingAnnouncements] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -932,6 +937,22 @@ function GotItUsageStats() {
     }
   }
 
+  async function toggleFeatureAnnouncements(enabled: boolean) {
+    setSwitchingAnnouncements(true);
+    try {
+      await api<{ featureAnnouncementsEnabled: boolean }>("/gotit/feature-announcements-config", {
+        method: "PATCH",
+        body: JSON.stringify({ enabled }),
+      });
+      setData((previous) => previous ? { ...previous, featureAnnouncementsEnabled: enabled } : previous);
+      message.success(enabled ? "新功能通知已开启" : "新功能通知已全局关闭");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "配置更新失败");
+    } finally {
+      setSwitchingAnnouncements(false);
+    }
+  }
+
   const counts = data?.counts ?? {};
   const exports = data?.exportModes ?? {};
   const metricCards = [
@@ -945,21 +966,37 @@ function GotItUsageStats() {
     ["同学", counts.classmates_tab_view ?? 0],
     ["邀请同学", counts.classmate_invite_click ?? 0],
     ["排行榜", counts.leaderboard_view ?? 0],
+    ["新功能通知展示", counts.feature_announcement_view ?? 0],
+    ["新功能主按钮", counts.feature_announcement_action ?? 0],
   ] as const;
 
   return (
     <>
       <PageHead
         title="课本单词通使用统计"
-        desc="事件异步上传；关闭后服务端立即停止写入，不影响小程序任何操作。"
+        desc="管理事件上传与首页新功能通知；开关修改后无需重新发布小程序。"
         extra={<Space><DatePicker value={date} onChange={(v) => { if (v) { setDate(v); setPage(1); } }} /><Button onClick={() => setRefreshKey((value) => value + 1)}>查询</Button></Space>}
       />
       <Card style={{ marginBottom: 16 }}>
-        <Space size="middle" wrap>
-          <Typography.Text strong>事件上传</Typography.Text>
-          <Switch checked={data?.analyticsEnabled ?? true} loading={switching} onChange={toggleAnalytics} />
-          <Tag color={data?.analyticsEnabled === false ? "default" : "green"}>{data?.analyticsEnabled === false ? "已关闭" : "运行中"}</Tag>
-          <Typography.Text type="secondary">关闭后客户端不入队，服务端也拒绝写入。</Typography.Text>
+        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Space size="middle" wrap>
+            <Typography.Text strong>事件上传</Typography.Text>
+            <Switch checked={data?.analyticsEnabled ?? true} loading={switching} onChange={toggleAnalytics} />
+            <Tag color={data?.analyticsEnabled === false ? "default" : "green"}>{data?.analyticsEnabled === false ? "已关闭" : "运行中"}</Tag>
+            <Typography.Text type="secondary">关闭后客户端不入队，服务端也拒绝写入。</Typography.Text>
+          </Space>
+          <Space size="middle" wrap>
+            <Typography.Text strong>首页新功能通知</Typography.Text>
+            <Switch
+              checked={data?.featureAnnouncementsEnabled ?? true}
+              loading={switchingAnnouncements}
+              onChange={toggleFeatureAnnouncements}
+            />
+            <Tag color={data?.featureAnnouncementsEnabled === false ? "default" : "green"}>
+              {data?.featureAnnouncementsEnabled === false ? "已全局关闭" : "展示中"}
+            </Tag>
+            <Typography.Text type="secondary">关闭后，所有用户下次进入首页时不再显示通知。</Typography.Text>
+          </Space>
         </Space>
       </Card>
       <div className="usage-metrics">
