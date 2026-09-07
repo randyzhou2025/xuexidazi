@@ -807,10 +807,11 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
       `
     : await sql`select count(*)::int as total from users`;
   const today = shanghaiDateString();
-  const [todayActive, todayRegistered, totalUsers] = await Promise.all([
+  const [todayActive, todayRegistered, totalUsers, reminderEnabled] = await Promise.all([
     sql`select count(distinct user_id)::int as total from user_daily_stats where stat_date = ${today}::date`,
     sql`select count(*)::int as total from users where (created_at at time zone 'Asia/Shanghai')::date = ${today}::date`,
     sql`select count(*)::int as total from users`,
+    sql`select count(*)::int as total from learning_reminders where enabled = true`,
   ]);
   const total = totals[0]?.total ?? 0;
   return {
@@ -835,6 +836,7 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
     totalUsers: totalUsers[0]?.total ?? 0,
     todayActiveCount: todayActive[0]?.total ?? 0,
     todayRegisteredCount: todayRegistered[0]?.total ?? 0,
+    reminderEnabledCount: reminderEnabled[0]?.total ?? 0,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),

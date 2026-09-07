@@ -716,7 +716,7 @@ function GotItUsers() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [stats, setStats] = useState({ totalUsers: 0, todayActiveCount: 0, todayRegisteredCount: 0 });
+  const [stats, setStats] = useState({ totalUsers: 0, todayActiveCount: 0, todayRegisteredCount: 0, reminderEnabledCount: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -729,6 +729,7 @@ function GotItUsers() {
         totalUsers: number;
         todayActiveCount: number;
         todayRegisteredCount: number;
+        reminderEnabledCount: number;
       }>(`/gotit/users?${params}`);
       setRows(data.users);
       setTotal(data.total);
@@ -736,6 +737,7 @@ function GotItUsers() {
         totalUsers: data.totalUsers,
         todayActiveCount: data.todayActiveCount,
         todayRegisteredCount: data.todayRegisteredCount,
+        reminderEnabledCount: data.reminderEnabledCount,
       });
     } catch (error) {
       message.error(error instanceof Error ? error.message : "加载失败");
@@ -752,7 +754,7 @@ function GotItUsers() {
     <>
       <PageHead
         title="课本单词通用户"
-        desc={`总用户数 ${stats.totalUsers} 人，今日注册 ${stats.todayRegisteredCount} 人，今日活跃 ${stats.todayActiveCount} 人。`}
+        desc={`总用户数 ${stats.totalUsers} 人，今日注册 ${stats.todayRegisteredCount} 人，今日活跃 ${stats.todayActiveCount} 人，已开启学习提醒 ${stats.reminderEnabledCount} 人。`}
         extra={<Space><Input.Search allowClear placeholder="搜索昵称/openid" onSearch={(v) => { setPage(1); setQuery(v); }} /><Button onClick={() => void load()}>刷新</Button></Space>}
       />
       <Table
