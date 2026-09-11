@@ -1,12 +1,14 @@
 import {
   BarChartOutlined,
   DashboardOutlined,
+  EditOutlined,
   FileTextOutlined,
   KeyOutlined,
   LoginOutlined,
   LogoutOutlined,
   TeamOutlined,
   ThunderboltOutlined,
+  TrophyOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
@@ -25,6 +27,7 @@ import {
   Statistic,
   Switch,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -261,6 +264,7 @@ function AdminShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }
     { type: "group" as const, label: "课本单词通 工具" },
     { key: "/gotit/users", icon: <TeamOutlined />, label: <Link to="/gotit/users">用户管理</Link> },
     { key: "/gotit/daily-activity", icon: <BarChartOutlined />, label: <Link to="/gotit/daily-activity">学习活跃</Link> },
+    { key: "/gotit/leaderboard-stats", icon: <TrophyOutlined />, label: <Link to="/gotit/leaderboard-stats">排行榜数据</Link> },
     { key: "/gotit/usage-stats", icon: <DashboardOutlined />, label: <Link to="/gotit/usage-stats">使用统计</Link> },
     { key: "/gotit/feedbacks", icon: <FileTextOutlined />, label: <Link to="/gotit/feedbacks">意见反馈</Link> },
   ];
@@ -305,6 +309,7 @@ function AdminShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }
             <Route path="/ptoe/logs" element={<PtoeLogs />} />
             <Route path="/gotit/users" element={<GotItUsers />} />
             <Route path="/gotit/daily-activity" element={<GotItDailyActivity />} />
+            <Route path="/gotit/leaderboard-stats" element={<GotItLeaderboardStats />} />
             <Route path="/gotit/usage-stats" element={<GotItUsageStats />} />
             <Route path="/gotit/feedbacks" element={<GotItFeedbacks />} />
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -1079,6 +1084,388 @@ function GotItUsageStats() {
           scroll={{ x: 850 }}
         />
       </Card>
+    </>
+  );
+}
+
+type GotitLeaderboardMetric = "time" | "words" | "power";
+type GotitLeaderboardPeriod = "week" | "total";
+
+interface GotitLeaderboardRow {
+  rank: number;
+  userId: string;
+  nickname: string;
+  value: number;
+  displayValue: string;
+}
+
+interface GotitDailyStatRow {
+  statDate: string;
+  studySeconds: number;
+  studyMinutes: number;
+  wordsStudied: number;
+}
+
+interface GotitLeaderboardDetail {
+  userId: string;
+  nickname: string;
+  metric: GotitLeaderboardMetric;
+  period: GotitLeaderboardPeriod;
+  weekKey: string | null;
+  weekStart: string | null;
+  weekEnd: string | null;
+  totalValue: number;
+  displayValue: string;
+  dailyStats?: GotitDailyStatRow[];
+  weeklyPower?: {
+    learningPower: number;
+    validDictationCount: number;
+    activeStudyDays: number;
+    lastScoreAt: string | null;
+  };
+  weeklyBreakdown?: Array<{ weekKey: string; learningPower: number }>;
+  masterySamples?: Array<{ wordId: string; firstMasteredAt: string | null }>;
+}
+
+const gotitLeaderboardMetricLabels: Record<GotitLeaderboardMetric, string> = {
+  time: "学习时长",
+  words: "掌握词汇",
+  power: "学习力",
+};
+
+function GotItLeaderboardStats() {
+  const [metric, setMetric] = useState<GotitLeaderboardMetric>("time");
+  const [period, setPeriod] = useState<GotitLeaderboardPeriod>("week");
+  const [weekKey, setWeekKey] = useState("");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [weekStart, setWeekStart] = useState<string | null>(null);
+  const [weekEnd, setWeekEnd] = useState<string | null>(null);
+  const [rows, setRows] = useState<GotitLeaderboardRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editRow, setEditRow] = useState<GotitLeaderboardRow | null>(null);
+  const [editDetail, setEditDetail] = useState<GotitLeaderboardDetail | null>(null);
+  const [dailyDraft, setDailyDraft] = useState<GotitDailyStatRow[]>([]);
+  const [powerDraft, setPowerDraft] = useState({ learningPower: 0, validDictationCount: 0, activeStudyDays: 0 });
+  const [masteryTarget, setMasteryTarget] = useState(0);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        metric,
+        period,
+        page: String(page),
+        pageSize: String(PAGE_SIZE),
+      });
+      if (query.trim()) params.set("q", query.trim());
+      if (period === "week" && weekKey.trim()) params.set("weekKey", weekKey.trim());
+      const data = await api<{
+        rows: GotitLeaderboardRow[];
+        total: number;
+        weekKey: string | null;
+        weekStart: string | null;
+        weekEnd: string | null;
+      }>(`/gotit/leaderboard-stats?${params}`);
+      setRows(data.rows);
+      setTotal(data.total);
+      if (data.weekKey && !weekKey.trim()) setWeekKey(data.weekKey);
+      setWeekStart(data.weekStart);
+      setWeekEnd(data.weekEnd);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }, [metric, period, page, query, weekKey]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function openEdit(row: GotitLeaderboardRow) {
+    setEditRow(row);
+    setEditOpen(true);
+    setEditLoading(true);
+    try {
+      const params = new URLSearchParams({ metric, period });
+      if (period === "week" && weekKey.trim()) params.set("weekKey", weekKey.trim());
+      const detail = await api<GotitLeaderboardDetail>(`/gotit/leaderboard-stats/${row.userId}/detail?${params}`);
+      setEditDetail(detail);
+      setDailyDraft(detail.dailyStats ?? []);
+      setPowerDraft({
+        learningPower: detail.weeklyPower?.learningPower ?? detail.totalValue,
+        validDictationCount: detail.weeklyPower?.validDictationCount ?? 0,
+        activeStudyDays: detail.weeklyPower?.activeStudyDays ?? 0,
+      });
+      setMasteryTarget(detail.totalValue);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "加载详情失败");
+      setEditOpen(false);
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function saveEdit() {
+    if (!editRow || !editDetail) return;
+    setEditSaving(true);
+    try {
+      if (metric === "time") {
+        for (const day of dailyDraft) {
+          await api("/gotit/user-daily-stats", {
+            method: "PATCH",
+            body: JSON.stringify({
+              userId: editRow.userId,
+              statDate: day.statDate,
+              studySeconds: Math.max(0, Math.floor(day.studyMinutes * 60)),
+              wordsStudied: day.wordsStudied,
+            }),
+          });
+        }
+      } else if (metric === "power") {
+        if (period === "week") {
+          await api("/gotit/weekly-learning-power", {
+            method: "PATCH",
+            body: JSON.stringify({
+              userId: editRow.userId,
+              weekKey: weekKey.trim() || editDetail.weekKey,
+              learningPower: powerDraft.learningPower,
+              validDictationCount: powerDraft.validDictationCount,
+              activeStudyDays: powerDraft.activeStudyDays,
+            }),
+          });
+        } else {
+          message.warning("总榜学力为各周累计，请切换到周榜后修改对应 weekKey 的记录");
+          return;
+        }
+      } else if (masteryTarget !== editDetail.totalValue) {
+        await api("/gotit/user-mastery-count", {
+          method: "PATCH",
+          body: JSON.stringify({
+            userId: editRow.userId,
+            period,
+            weekKey: period === "week" ? (weekKey.trim() || editDetail.weekKey) : undefined,
+            targetCount: masteryTarget,
+          }),
+        });
+      }
+      message.success("已保存");
+      setEditOpen(false);
+      await load();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  const periodHint =
+    period === "week" && weekStart && weekEnd
+      ? `当前周榜：${weekStart} ~ ${weekEnd}${weekKey ? `（${weekKey}）` : ""}`
+      : period === "week"
+        ? "周榜按上海时区自然周统计"
+        : "总榜为历史累计";
+
+  return (
+    <>
+      <PageHead
+        title="课本单词通排行榜数据"
+        desc={`查看并修正 ${gotitLeaderboardMetricLabels[metric]} 的${period === "week" ? "周榜" : "总榜"}数据。${periodHint}`}
+        extra={
+          <Space wrap>
+            <Input.Search allowClear placeholder="搜索昵称" onSearch={(v) => { setPage(1); setQuery(v); }} style={{ width: 180 }} />
+            {period === "week" ? (
+              <Input
+                placeholder="周次 YYYY-Www"
+                value={weekKey}
+                onChange={(e) => setWeekKey(e.target.value)}
+                style={{ width: 140 }}
+              />
+            ) : null}
+            <Button onClick={() => void load()}>刷新</Button>
+          </Space>
+        }
+      />
+      <Card style={{ marginBottom: 16 }}>
+        <Space wrap size={16}>
+          <Select<GotitLeaderboardMetric>
+            value={metric}
+            style={{ width: 140 }}
+            options={[
+              { value: "time", label: "学习时长" },
+              { value: "words", label: "掌握词汇" },
+              { value: "power", label: "学习力" },
+            ]}
+            onChange={(value) => { setMetric(value); setPage(1); }}
+          />
+          <Select<GotitLeaderboardPeriod>
+            value={period}
+            style={{ width: 120 }}
+            options={[
+              { value: "week", label: "周榜" },
+              { value: "total", label: "总榜" },
+            ]}
+            onChange={(value) => { setPeriod(value); setPage(1); }}
+          />
+        </Space>
+      </Card>
+      <Table
+        rowKey="userId"
+        loading={loading}
+        dataSource={rows}
+        columns={[
+          { title: "排名", dataIndex: "rank", width: 72 },
+          { title: "昵称", dataIndex: "nickname" },
+          {
+            title: gotitLeaderboardMetricLabels[metric],
+            dataIndex: "displayValue",
+            render: (_, row) => (
+              <Space>
+                <span>{row.displayValue}</span>
+                <Tag>{row.value}</Tag>
+              </Space>
+            ),
+          },
+          {
+            title: "操作",
+            width: 96,
+            render: (_, row) => (
+              <Button type="link" icon={<EditOutlined />} onClick={() => void openEdit(row)}>
+                编辑
+              </Button>
+            ),
+          },
+        ]}
+        pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage, showTotal: (value) => `共 ${value} 条` }}
+        scroll={{ x: 720 }}
+      />
+
+      <Modal
+        title={editRow ? `编辑 ${editRow.nickname} · ${gotitLeaderboardMetricLabels[metric]}` : "编辑数据"}
+        open={editOpen}
+        onCancel={() => setEditOpen(false)}
+        onOk={() => void saveEdit()}
+        confirmLoading={editSaving}
+        width={720}
+        destroyOnClose
+      >
+        {editLoading || !editDetail ? (
+          <Typography.Text type="secondary">加载中...</Typography.Text>
+        ) : metric === "time" ? (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Alert type="info" showIcon message="按日修改 study_seconds。周榜取本周合计，总榜取全部合计。" />
+            <Table
+              rowKey="statDate"
+              size="small"
+              pagination={false}
+              dataSource={dailyDraft}
+              columns={[
+                { title: "日期", dataIndex: "statDate", width: 120 },
+                {
+                  title: "时长(分钟)",
+                  dataIndex: "studyMinutes",
+                  render: (_, row, index) => (
+                    <InputNumber
+                      min={0}
+                      value={row.studyMinutes}
+                      onChange={(value) => {
+                        const next = [...dailyDraft];
+                        next[index] = { ...row, studyMinutes: Math.max(0, Math.floor(Number(value ?? 0))) };
+                        setDailyDraft(next);
+                      }}
+                    />
+                  ),
+                },
+                {
+                  title: "今日单词",
+                  dataIndex: "wordsStudied",
+                  render: (_, row, index) => (
+                    <InputNumber
+                      min={0}
+                      value={row.wordsStudied}
+                      onChange={(value) => {
+                        const next = [...dailyDraft];
+                        next[index] = { ...row, wordsStudied: Math.max(0, Math.floor(Number(value ?? 0))) };
+                        setDailyDraft(next);
+                      }}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </Space>
+        ) : metric === "power" ? (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            {period === "week" ? (
+              <>
+                <Alert type="info" showIcon message={`修改 week_key = ${weekKey.trim() || editDetail.weekKey} 的 weekly_learning_power 记录。`} />
+                <Form layout="vertical">
+                  <Form.Item label="学习力">
+                    <InputNumber min={0} value={powerDraft.learningPower} onChange={(v) => setPowerDraft((s) => ({ ...s, learningPower: Math.max(0, Math.floor(Number(v ?? 0))) }))} />
+                  </Form.Item>
+                  <Form.Item label="有效听写次数">
+                    <InputNumber min={0} value={powerDraft.validDictationCount} onChange={(v) => setPowerDraft((s) => ({ ...s, validDictationCount: Math.max(0, Math.floor(Number(v ?? 0))) }))} />
+                  </Form.Item>
+                  <Form.Item label="活跃天数">
+                    <InputNumber min={0} value={powerDraft.activeStudyDays} onChange={(v) => setPowerDraft((s) => ({ ...s, activeStudyDays: Math.max(0, Math.floor(Number(v ?? 0))) }))} />
+                  </Form.Item>
+                </Form>
+              </>
+            ) : (
+              <>
+                <Alert type="warning" showIcon message="总榜学力为各周 weekly_learning_power 之和。下方列出最近 24 周，请切到周榜修改对应 weekKey。" />
+                <Table
+                  rowKey="weekKey"
+                  size="small"
+                  pagination={false}
+                  dataSource={editDetail.weeklyBreakdown ?? []}
+                  columns={[
+                    { title: "周次", dataIndex: "weekKey" },
+                    { title: "学习力", dataIndex: "learningPower" },
+                  ]}
+                />
+              </>
+            )}
+          </Space>
+        ) : (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Alert
+              type="info"
+              showIcon
+              message={
+                period === "week"
+                  ? "周榜掌握词汇 = 本周 first_mastered_at 有值的词条数。调低时会删除本周最新掌握的记录。"
+                  : "总榜掌握词汇来自 user_progress.mastered_word_ids。调低时会截断数组末尾词条。"
+              }
+            />
+            <Form layout="inline">
+              <Form.Item label="当前值">
+                <Typography.Text strong>{editDetail.displayValue}</Typography.Text>
+              </Form.Item>
+              <Form.Item label="目标值">
+                <InputNumber min={0} value={masteryTarget} onChange={(v) => setMasteryTarget(Math.max(0, Math.floor(Number(v ?? 0))))} />
+              </Form.Item>
+            </Form>
+            {(editDetail.masterySamples?.length ?? 0) > 0 ? (
+              <Table
+                rowKey="wordId"
+                size="small"
+                pagination={false}
+                dataSource={editDetail.masterySamples}
+                columns={[
+                  { title: "词条 ID", dataIndex: "wordId", ellipsis: true },
+                  { title: "首次掌握", dataIndex: "firstMasteredAt", render: formatTime },
+                ]}
+              />
+            ) : null}
+          </Space>
+        )}
+      </Modal>
     </>
   );
 }

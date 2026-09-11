@@ -147,6 +147,60 @@ function validDateOnly(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function dateKeyAfter(dateKey: string, days: number): string {
+  const cursor = new Date(`${dateKey}T12:00:00+08:00`);
+  cursor.setUTCDate(cursor.getUTCDate() + days);
+  return shanghaiDateString(cursor);
+}
+
+function shanghaiWeekContext(now = new Date()) {
+  const dateKey = shanghaiDateString(now);
+  const current = new Date(`${dateKey}T12:00:00+08:00`);
+  const weekday = current.getUTCDay() || 7;
+  const mondayKey = dateKeyAfter(dateKey, 1 - weekday);
+  const sundayKey = dateKeyAfter(mondayKey, 6);
+  const thursdayKey = dateKeyAfter(mondayKey, 3);
+  const weekYear = Number(thursdayKey.slice(0, 4));
+  const januaryFourthKey = `${weekYear}-01-04`;
+  const janFourth = new Date(`${januaryFourthKey}T12:00:00+08:00`);
+  const janFourthWeekday = janFourth.getUTCDay() || 7;
+  const firstMondayKey = dateKeyAfter(januaryFourthKey, 1 - janFourthWeekday);
+  const weekNumber =
+    Math.floor(
+      (new Date(`${mondayKey}T12:00:00+08:00`).getTime() -
+        new Date(`${firstMondayKey}T12:00:00+08:00`).getTime()) /
+        604_800_000
+    ) + 1;
+  return {
+    dateKey,
+    weekKey: `${weekYear}-W${String(weekNumber).padStart(2, "0")}`,
+    weekStart: mondayKey,
+    weekEnd: sundayKey,
+    weekStartIso: `${mondayKey}T00:00:00+08:00`,
+    weekEndIso: `${sundayKey}T23:59:59.999+08:00`,
+  };
+}
+
+type GotitLeaderboardMetric = "time" | "words" | "power";
+type GotitLeaderboardPeriod = "week" | "total";
+
+function parseGotitLeaderboardMetric(value: unknown): GotitLeaderboardMetric | null {
+  return value === "time" || value === "words" || value === "power" ? value : null;
+}
+
+function parseGotitLeaderboardPeriod(value: unknown): GotitLeaderboardPeriod | null {
+  return value === "week" || value === "total" ? value : null;
+}
+
+function formatLeaderboardDisplayValue(metric: GotitLeaderboardMetric, value: number): string {
+  if (metric === "time") {
+    const minutes = Math.floor(value / 60);
+    return minutes > 0 && value < 60 ? "<1 分钟" : `${minutes.toLocaleString("zh-CN")} 分钟`;
+  }
+  if (metric === "words") return `${value.toLocaleString("zh-CN")} 词`;
+  return `${value.toLocaleString("zh-CN")} 分`;
+}
+
 function addDays(date: Date, days: number): Date {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -1049,6 +1103,615 @@ app.patch("/padmin/api/gotit/feature-announcements-config", async (request, repl
     on conflict (key) do update set value = excluded.value
   `;
   return { featureAnnouncementsEnabled: body.enabled };
+});
+
+app.get("/padmin/api/gotit/leaderboard-stats", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const query = request.query as {
+    metric?: string;
+    period?: string;
+    weekKey?: string;
+    q?: string;
+    page?: string;
+    pageSize?: string;
+  };
+  const metric = parseGotitLeaderboardMetric(query.metric);
+  const period = parseGotitLeaderboardPeriod(query.period);
+  if (!metric || !period) {
+    return reply.code(400).send({ error: "metric 需为 time/words/power，period 需为 week/total" });
+  }
+  const context = shanghaiWeekContext();
+  const weekKey = query.weekKey?.trim() || context.weekKey;
+  const page = Math.max(1, Number(query.page ?? 1));
+  const pageSize = Math.min(100, Math.max(1, Number(query.pageSize ?? 20)));
+  const offset = (page - 1) * pageSize;
+  const q = query.q?.trim() ?? "";
+  const pattern = q ? `%${q}%` : null;
+
+  let weekStart = context.weekStart;
+  let weekEnd = context.weekEnd;
+  if (period === "week" && query.weekKey?.trim()) {
+    const match = /^(\d{4})-W(\d{2})$/.exec(weekKey);
+    if (!match) return reply.code(400).send({ error: "weekKey 格式应为 YYYY-Www" });
+    const year = Number(match[1]);
+    const week = Number(match[2]);
+    const janFourthKey = `${year}-01-04`;
+    const janFourth = new Date(`${janFourthKey}T12:00:00+08:00`);
+    const janFourthWeekday = janFourth.getUTCDay() || 7;
+    const firstMondayKey = dateKeyAfter(janFourthKey, 1 - janFourthWeekday);
+    weekStart = dateKeyAfter(firstMondayKey, (week - 1) * 7);
+    weekEnd = dateKeyAfter(weekStart, 6);
+  }
+
+  const rows =
+    metric === "time" && period === "week"
+      ? await sql`
+          with totals as (
+            select s.user_id, sum(s.study_seconds)::bigint as value
+            from user_daily_stats s
+            where s.stat_date between ${weekStart}::date and ${weekEnd}::date
+            group by s.user_id
+            having sum(s.study_seconds) > 0
+          ),
+          ranked as (
+            select totals.user_id, u.nickname, totals.value,
+              row_number() over (order by totals.value desc, totals.user_id asc) as rank
+            from totals
+            inner join users u on u.id = totals.user_id
+            where ${pattern}::text is null or u.nickname ilike ${pattern}
+          )
+          select user_id, nickname, value, rank from ranked
+          order by rank asc
+          limit ${pageSize} offset ${offset}
+        `
+      : metric === "time" && period === "total"
+        ? await sql`
+            with totals as (
+              select s.user_id, sum(s.study_seconds)::bigint as value
+              from user_daily_stats s
+              group by s.user_id
+              having sum(s.study_seconds) > 0
+            ),
+            ranked as (
+              select totals.user_id, u.nickname, totals.value,
+                row_number() over (order by totals.value desc, totals.user_id asc) as rank
+              from totals
+              inner join users u on u.id = totals.user_id
+              where ${pattern}::text is null or u.nickname ilike ${pattern}
+            )
+            select user_id, nickname, value, rank from ranked
+            order by rank asc
+            limit ${pageSize} offset ${offset}
+          `
+        : metric === "words" && period === "week"
+          ? await sql`
+              with totals as (
+                select m.user_id, count(*)::bigint as value
+                from user_word_mastery m
+                where m.first_mastered_at between ${`${weekStart}T00:00:00+08:00`}::timestamptz
+                  and ${`${weekEnd}T23:59:59.999+08:00`}::timestamptz
+                group by m.user_id
+              ),
+              ranked as (
+                select totals.user_id, u.nickname, totals.value,
+                  row_number() over (order by totals.value desc, totals.user_id asc) as rank
+                from totals
+                inner join users u on u.id = totals.user_id
+                where ${pattern}::text is null or u.nickname ilike ${pattern}
+              )
+              select user_id, nickname, value, rank from ranked
+              order by rank asc
+              limit ${pageSize} offset ${offset}
+            `
+          : metric === "words" && period === "total"
+            ? await sql`
+                with totals as (
+                  select up.user_id,
+                    coalesce(jsonb_array_length(up.mastered_word_ids), 0)::bigint as value
+                  from user_progress up
+                  where coalesce(jsonb_array_length(up.mastered_word_ids), 0) > 0
+                ),
+                ranked as (
+                  select totals.user_id, u.nickname, totals.value,
+                    row_number() over (order by totals.value desc, totals.user_id asc) as rank
+                  from totals
+                  inner join users u on u.id = totals.user_id
+                  where ${pattern}::text is null or u.nickname ilike ${pattern}
+                )
+                select user_id, nickname, value, rank from ranked
+                order by rank asc
+                limit ${pageSize} offset ${offset}
+              `
+            : metric === "power" && period === "week"
+              ? await sql`
+                  with totals as (
+                    select w.user_id, w.learning_power::bigint as value
+                    from weekly_learning_power w
+                    where w.week_key = ${weekKey} and w.learning_power > 0
+                  ),
+                  ranked as (
+                    select totals.user_id, u.nickname, totals.value,
+                      row_number() over (order by totals.value desc, totals.user_id asc) as rank
+                    from totals
+                    inner join users u on u.id = totals.user_id
+                    where ${pattern}::text is null or u.nickname ilike ${pattern}
+                  )
+                  select user_id, nickname, value, rank from ranked
+                  order by rank asc
+                  limit ${pageSize} offset ${offset}
+                `
+              : await sql`
+                  with totals as (
+                    select w.user_id, sum(w.learning_power)::bigint as value
+                    from weekly_learning_power w
+                    group by w.user_id
+                    having sum(w.learning_power) > 0
+                  ),
+                  ranked as (
+                    select totals.user_id, u.nickname, totals.value,
+                      row_number() over (order by totals.value desc, totals.user_id asc) as rank
+                    from totals
+                    inner join users u on u.id = totals.user_id
+                    where ${pattern}::text is null or u.nickname ilike ${pattern}
+                  )
+                  select user_id, nickname, value, rank from ranked
+                  order by rank asc
+                  limit ${pageSize} offset ${offset}
+                `;
+
+  const countRows =
+    metric === "time" && period === "week"
+      ? await sql`
+          select count(*)::int as total
+          from (
+            select s.user_id
+            from user_daily_stats s
+            inner join users u on u.id = s.user_id
+            where s.stat_date between ${weekStart}::date and ${weekEnd}::date
+              and (${pattern}::text is null or u.nickname ilike ${pattern})
+            group by s.user_id
+            having sum(s.study_seconds) > 0
+          ) t
+        `
+      : metric === "time" && period === "total"
+        ? await sql`
+            select count(*)::int as total
+            from (
+              select s.user_id
+              from user_daily_stats s
+              inner join users u on u.id = s.user_id
+              where ${pattern}::text is null or u.nickname ilike ${pattern}
+              group by s.user_id
+              having sum(s.study_seconds) > 0
+            ) t
+          `
+        : metric === "words" && period === "week"
+          ? await sql`
+              select count(*)::int as total
+              from (
+                select m.user_id
+                from user_word_mastery m
+                inner join users u on u.id = m.user_id
+                where m.first_mastered_at between ${`${weekStart}T00:00:00+08:00`}::timestamptz
+                  and ${`${weekEnd}T23:59:59.999+08:00`}::timestamptz
+                  and (${pattern}::text is null or u.nickname ilike ${pattern})
+                group by m.user_id
+              ) t
+            `
+          : metric === "words" && period === "total"
+            ? await sql`
+                select count(*)::int as total
+                from user_progress up
+                inner join users u on u.id = up.user_id
+                where coalesce(jsonb_array_length(up.mastered_word_ids), 0) > 0
+                  and (${pattern}::text is null or u.nickname ilike ${pattern})
+              `
+            : metric === "power" && period === "week"
+              ? await sql`
+                  select count(*)::int as total
+                  from weekly_learning_power w
+                  inner join users u on u.id = w.user_id
+                  where w.week_key = ${weekKey} and w.learning_power > 0
+                    and (${pattern}::text is null or u.nickname ilike ${pattern})
+                `
+              : await sql`
+                  select count(*)::int as total
+                  from (
+                    select w.user_id
+                    from weekly_learning_power w
+                    inner join users u on u.id = w.user_id
+                    where ${pattern}::text is null or u.nickname ilike ${pattern}
+                    group by w.user_id
+                    having sum(w.learning_power) > 0
+                  ) t
+                `;
+
+  const total = countRows[0]?.total ?? 0;
+  return {
+    metric,
+    period,
+    weekKey: period === "week" ? weekKey : null,
+    weekStart: period === "week" ? weekStart : null,
+    weekEnd: period === "week" ? weekEnd : null,
+    rows: rows.map((row) => ({
+      rank: Number(row.rank),
+      userId: String(row.user_id),
+      nickname: row.nickname ?? "同学",
+      value: Number(row.value),
+      displayValue: formatLeaderboardDisplayValue(metric, Number(row.value)),
+    })),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+});
+
+app.get("/padmin/api/gotit/leaderboard-stats/:userId/detail", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const { userId } = request.params as { userId: string };
+  const query = request.query as { metric?: string; period?: string; weekKey?: string };
+  const metric = parseGotitLeaderboardMetric(query.metric);
+  const period = parseGotitLeaderboardPeriod(query.period);
+  if (!metric || !period) {
+    return reply.code(400).send({ error: "metric 需为 time/words/power，period 需为 week/total" });
+  }
+  const context = shanghaiWeekContext();
+  const weekKey = query.weekKey?.trim() || context.weekKey;
+  let weekStart = context.weekStart;
+  let weekEnd = context.weekEnd;
+  if (period === "week") {
+    const match = /^(\d{4})-W(\d{2})$/.exec(weekKey);
+    if (!match) return reply.code(400).send({ error: "weekKey 格式应为 YYYY-Www" });
+    const year = Number(match[1]);
+    const week = Number(match[2]);
+    const janFourthKey = `${year}-01-04`;
+    const janFourth = new Date(`${janFourthKey}T12:00:00+08:00`);
+    const janFourthWeekday = janFourth.getUTCDay() || 7;
+    const firstMondayKey = dateKeyAfter(janFourthKey, 1 - janFourthWeekday);
+    weekStart = dateKeyAfter(firstMondayKey, (week - 1) * 7);
+    weekEnd = dateKeyAfter(weekStart, 6);
+  }
+
+  const [user] = await sql`
+    select id, nickname from users where id = ${userId}::uuid limit 1
+  `;
+  if (!user) return reply.code(404).send({ error: "用户不存在" });
+
+  if (metric === "time") {
+    const dailyRows =
+      period === "week"
+        ? await sql`
+            select stat_date, study_seconds, words_studied
+            from user_daily_stats
+            where user_id = ${userId}::uuid
+              and stat_date between ${weekStart}::date and ${weekEnd}::date
+            order by stat_date asc
+          `
+        : await sql`
+            select stat_date, study_seconds, words_studied
+            from user_daily_stats
+            where user_id = ${userId}::uuid
+            order by stat_date desc
+            limit 60
+          `;
+    const byDate = new Map(
+      dailyRows.map((row) => [
+        toDateOnly(row.stat_date) ?? "",
+        {
+          statDate: toDateOnly(row.stat_date) ?? "",
+          studySeconds: Number(row.study_seconds ?? 0),
+          studyMinutes: Math.round(Number(row.study_seconds ?? 0) / 60),
+          wordsStudied: Number(row.words_studied ?? 0),
+        },
+      ])
+    );
+    const dailyStats =
+      period === "week"
+        ? Array.from({ length: 7 }, (_, index) => {
+            const statDate = dateKeyAfter(weekStart, index);
+            return (
+              byDate.get(statDate) ?? {
+                statDate,
+                studySeconds: 0,
+                studyMinutes: 0,
+                wordsStudied: 0,
+              }
+            );
+          })
+        : [...byDate.values()];
+    const totalSeconds = dailyStats.reduce((sum, row) => sum + row.studySeconds, 0);
+    return {
+      userId,
+      nickname: user.nickname,
+      metric,
+      period,
+      weekKey: period === "week" ? weekKey : null,
+      weekStart: period === "week" ? weekStart : null,
+      weekEnd: period === "week" ? weekEnd : null,
+      totalValue: totalSeconds,
+      displayValue: formatLeaderboardDisplayValue("time", totalSeconds),
+      dailyStats,
+    };
+  }
+
+  if (metric === "words") {
+    if (period === "week") {
+      const [countRow] = await sql`
+        select count(*)::int as total
+        from user_word_mastery
+        where user_id = ${userId}::uuid
+          and first_mastered_at between ${`${weekStart}T00:00:00+08:00`}::timestamptz
+            and ${`${weekEnd}T23:59:59.999+08:00`}::timestamptz
+      `;
+      const samples = await sql`
+        select word_id, first_mastered_at
+        from user_word_mastery
+        where user_id = ${userId}::uuid
+          and first_mastered_at between ${`${weekStart}T00:00:00+08:00`}::timestamptz
+            and ${`${weekEnd}T23:59:59.999+08:00`}::timestamptz
+        order by first_mastered_at desc
+        limit 20
+      `;
+      const total = Number(countRow?.total ?? 0);
+      return {
+        userId,
+        nickname: user.nickname,
+        metric,
+        period,
+        weekKey,
+        weekStart,
+        weekEnd,
+        totalValue: total,
+        displayValue: formatLeaderboardDisplayValue("words", total),
+        masterySamples: samples.map((row) => ({
+          wordId: String(row.word_id),
+          firstMasteredAt: toIso(row.first_mastered_at),
+        })),
+      };
+    }
+    const [progress] = await sql`
+      select coalesce(jsonb_array_length(mastered_word_ids), 0)::int as total, mastered_word_ids
+      from user_progress where user_id = ${userId}::uuid limit 1
+    `;
+    const total = Number(progress?.total ?? 0);
+    const samples = Array.isArray(progress?.mastered_word_ids)
+      ? (progress.mastered_word_ids as string[]).slice(-20).reverse()
+      : [];
+    return {
+      userId,
+      nickname: user.nickname,
+      metric,
+      period,
+      weekKey: null,
+      weekStart: null,
+      weekEnd: null,
+      totalValue: total,
+      displayValue: formatLeaderboardDisplayValue("words", total),
+      masterySamples: samples.map((wordId) => ({ wordId, firstMasteredAt: null })),
+    };
+  }
+
+  if (period === "week") {
+    const [row] = await sql`
+      select learning_power, valid_dictation_count, active_study_days, last_score_at
+      from weekly_learning_power
+      where user_id = ${userId}::uuid and week_key = ${weekKey}
+      limit 1
+    `;
+    const total = Number(row?.learning_power ?? 0);
+    return {
+      userId,
+      nickname: user.nickname,
+      metric,
+      period,
+      weekKey,
+      weekStart,
+      weekEnd,
+      totalValue: total,
+      displayValue: formatLeaderboardDisplayValue("power", total),
+      weeklyPower: {
+        learningPower: total,
+        validDictationCount: Number(row?.valid_dictation_count ?? 0),
+        activeStudyDays: Number(row?.active_study_days ?? 0),
+        lastScoreAt: toIso(row?.last_score_at),
+      },
+    };
+  }
+
+  const weeklyRows = await sql`
+    select week_key, learning_power
+    from weekly_learning_power
+    where user_id = ${userId}::uuid
+    order by week_key desc
+    limit 24
+  `;
+  const total = weeklyRows.reduce((sum, row) => sum + Number(row.learning_power ?? 0), 0);
+  return {
+    userId,
+    nickname: user.nickname,
+    metric,
+    period,
+    weekKey: null,
+    weekStart: null,
+    weekEnd: null,
+    totalValue: total,
+    displayValue: formatLeaderboardDisplayValue("power", total),
+    weeklyBreakdown: weeklyRows.map((row) => ({
+      weekKey: String(row.week_key),
+      learningPower: Number(row.learning_power ?? 0),
+    })),
+  };
+});
+
+app.patch("/padmin/api/gotit/user-daily-stats", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const body = request.body as {
+    userId?: unknown;
+    statDate?: unknown;
+    studySeconds?: unknown;
+    wordsStudied?: unknown;
+  } | null;
+  if (typeof body?.userId !== "string" || !validDateOnly(String(body.statDate ?? ""))) {
+    return reply.code(400).send({ error: "userId 与 statDate(YYYY-MM-DD) 必填" });
+  }
+  if (typeof body.studySeconds !== "number" || !Number.isFinite(body.studySeconds) || body.studySeconds < 0) {
+    return reply.code(400).send({ error: "studySeconds 必须为非负整数" });
+  }
+  const studySeconds = Math.floor(body.studySeconds);
+  const wordsStudied =
+    typeof body.wordsStudied === "number" && Number.isFinite(body.wordsStudied)
+      ? Math.max(0, Math.floor(body.wordsStudied))
+      : 0;
+  const statDate = String(body.statDate);
+  const userId = body.userId;
+  await sql`
+    insert into user_daily_stats (
+      user_id, stat_date, words_studied, study_seconds, word_ids_today, first_seen_at, last_seen_at
+    )
+    values (
+      ${userId}::uuid, ${statDate}::date, ${wordsStudied}, ${studySeconds}, '[]'::jsonb, now(), now()
+    )
+    on conflict (user_id, stat_date) do update set
+      study_seconds = ${studySeconds},
+      words_studied = coalesce(${wordsStudied}, user_daily_stats.words_studied),
+      last_seen_at = now()
+  `;
+  return {
+    userId,
+    statDate,
+    studySeconds,
+    studyMinutes: Math.round(studySeconds / 60),
+    wordsStudied,
+  };
+});
+
+app.patch("/padmin/api/gotit/weekly-learning-power", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const body = request.body as {
+    userId?: unknown;
+    weekKey?: unknown;
+    learningPower?: unknown;
+    validDictationCount?: unknown;
+    activeStudyDays?: unknown;
+  } | null;
+  if (typeof body?.userId !== "string" || typeof body.weekKey !== "string" || !/^\d{4}-W\d{2}$/.test(body.weekKey)) {
+    return reply.code(400).send({ error: "userId 与 weekKey(YYYY-Www) 必填" });
+  }
+  if (typeof body.learningPower !== "number" || !Number.isFinite(body.learningPower) || body.learningPower < 0) {
+    return reply.code(400).send({ error: "learningPower 必须为非负整数" });
+  }
+  const learningPower = Math.floor(body.learningPower);
+  const validDictationCount =
+    typeof body.validDictationCount === "number" && Number.isFinite(body.validDictationCount)
+      ? Math.max(0, Math.floor(body.validDictationCount))
+      : 0;
+  const activeStudyDays =
+    typeof body.activeStudyDays === "number" && Number.isFinite(body.activeStudyDays)
+      ? Math.max(0, Math.floor(body.activeStudyDays))
+      : 0;
+  await sql`
+    insert into weekly_learning_power (
+      user_id, week_key, learning_power, valid_dictation_count, active_study_days,
+      last_score_at, created_at, updated_at
+    )
+    values (
+      ${body.userId}::uuid, ${body.weekKey}, ${learningPower}, ${validDictationCount}, ${activeStudyDays},
+      now(), now(), now()
+    )
+    on conflict (user_id, week_key) do update set
+      learning_power = ${learningPower},
+      valid_dictation_count = ${validDictationCount},
+      active_study_days = ${activeStudyDays},
+      last_score_at = now(),
+      updated_at = now()
+  `;
+  return {
+    userId: body.userId,
+    weekKey: body.weekKey,
+    learningPower,
+    validDictationCount,
+    activeStudyDays,
+  };
+});
+
+app.patch("/padmin/api/gotit/user-mastery-count", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const body = request.body as {
+    userId?: unknown;
+    period?: unknown;
+    weekKey?: unknown;
+    targetCount?: unknown;
+  } | null;
+  const period = parseGotitLeaderboardPeriod(body?.period);
+  if (typeof body?.userId !== "string" || !period || typeof body.targetCount !== "number") {
+    return reply.code(400).send({ error: "userId、period(week/total) 与 targetCount 必填" });
+  }
+  const targetCount = Math.max(0, Math.floor(body.targetCount));
+  if (period === "week") {
+    const weekKey = typeof body.weekKey === "string" ? body.weekKey : shanghaiWeekContext().weekKey;
+    const match = /^(\d{4})-W(\d{2})$/.exec(weekKey);
+    if (!match) return reply.code(400).send({ error: "weekKey 格式应为 YYYY-Www" });
+    const year = Number(match[1]);
+    const week = Number(match[2]);
+    const janFourthKey = `${year}-01-04`;
+    const janFourth = new Date(`${janFourthKey}T12:00:00+08:00`);
+    const janFourthWeekday = janFourth.getUTCDay() || 7;
+    const firstMondayKey = dateKeyAfter(janFourthKey, 1 - janFourthWeekday);
+    const weekStart = dateKeyAfter(firstMondayKey, (week - 1) * 7);
+    const weekEnd = dateKeyAfter(weekStart, 6);
+    const [countRow] = await sql`
+      select count(*)::int as total
+      from user_word_mastery
+      where user_id = ${body.userId}::uuid
+        and first_mastered_at between ${`${weekStart}T00:00:00+08:00`}::timestamptz
+          and ${`${weekEnd}T23:59:59.999+08:00`}::timestamptz
+    `;
+    const current = Number(countRow?.total ?? 0);
+    if (targetCount < current) {
+      const removeCount = current - targetCount;
+      await sql`
+        delete from user_word_mastery
+        where (user_id, word_id) in (
+          select user_id, word_id
+          from user_word_mastery
+          where user_id = ${body.userId}::uuid
+            and first_mastered_at between ${`${weekStart}T00:00:00+08:00`}::timestamptz
+              and ${`${weekEnd}T23:59:59.999+08:00`}::timestamptz
+          order by first_mastered_at desc
+          limit ${removeCount}
+        )
+      `;
+    }
+    return { userId: body.userId, period, weekKey, targetCount, previousCount: current };
+  }
+
+  const [progress] = await sql`
+    select mastered_word_ids
+    from user_progress
+    where user_id = ${body.userId}::uuid
+    limit 1
+  `;
+  const currentIds = Array.isArray(progress?.mastered_word_ids)
+    ? (progress.mastered_word_ids as string[]).filter((id) => typeof id === "string" && id.length > 0)
+    : [];
+  const nextIds = currentIds.slice(0, targetCount);
+  await sql`
+    update user_progress
+    set mastered_word_ids = ${JSON.stringify(nextIds)}::jsonb, updated_at = now()
+    where user_id = ${body.userId}::uuid
+  `;
+  return {
+    userId: body.userId,
+    period,
+    targetCount,
+    previousCount: currentIds.length,
+  };
 });
 
 app.get("/robots.txt", async (_request, reply) => sendStatic(reply, path.join(projectRoot, "robots.txt")));
