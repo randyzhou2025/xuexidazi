@@ -849,6 +849,7 @@ interface GotItUsageStatsPayload {
   pageSize: number;
   analyticsEnabled: boolean;
   featureAnnouncementsEnabled: boolean;
+  leaderboardDisplayLimit: number;
   counts: Record<string, number>;
   exportModes: Record<string, number>;
   themes: Array<{ themeId: string; themeName: string; users: number }>;
@@ -909,6 +910,7 @@ function GotItUsageStats() {
   const [loading, setLoading] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [switchingAnnouncements, setSwitchingAnnouncements] = useState(false);
+  const [savingLeaderboardLimit, setSavingLeaderboardLimit] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -955,6 +957,22 @@ function GotItUsageStats() {
     }
   }
 
+  async function updateLeaderboardLimit(displayLimit: number) {
+    setSavingLeaderboardLimit(true);
+    try {
+      const result = await api<{ leaderboardDisplayLimit: number }>("/gotit/leaderboard-config", {
+        method: "PATCH",
+        body: JSON.stringify({ displayLimit }),
+      });
+      setData((previous) => previous ? { ...previous, leaderboardDisplayLimit: result.leaderboardDisplayLimit } : previous);
+      message.success(`排行榜已设为 Top ${result.leaderboardDisplayLimit}`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "配置更新失败");
+    } finally {
+      setSavingLeaderboardLimit(false);
+    }
+  }
+
   const counts = data?.counts ?? {};
   const exports = data?.exportModes ?? {};
   const metricCards = [
@@ -976,11 +994,24 @@ function GotItUsageStats() {
     <>
       <PageHead
         title="课本单词通使用统计"
-        desc="管理事件上传与首页新功能通知；开关修改后无需重新发布小程序。"
+        desc="管理事件上传、首页新功能通知与排行榜展示人数。"
         extra={<Space><DatePicker value={date} onChange={(v) => { if (v) { setDate(v); setPage(1); } }} /><Button onClick={() => setRefreshKey((value) => value + 1)}>查询</Button></Space>}
       />
       <Card style={{ marginBottom: 16 }}>
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+          <Space size="middle" wrap>
+            <Typography.Text strong>排行榜展示人数</Typography.Text>
+            <Select
+              aria-label="排行榜展示人数"
+              value={data?.leaderboardDisplayLimit ?? 10}
+              options={[10, 20, 50, 100].map((value) => ({ value, label: `Top ${value}` }))}
+              loading={savingLeaderboardLimit}
+              disabled={!data || loading || savingLeaderboardLimit}
+              onChange={updateLeaderboardLimit}
+              style={{ width: 120 }}
+            />
+            <Typography.Text type="secondary">默认 Top 10，适用于全部周榜和总榜，下次加载榜单时生效。</Typography.Text>
+          </Space>
           <Space size="middle" wrap>
             <Typography.Text strong>事件上传</Typography.Text>
             <Switch checked={data?.analyticsEnabled ?? true} loading={switching} onChange={toggleAnalytics} />

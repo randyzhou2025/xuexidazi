@@ -906,6 +906,15 @@ app.get("/padmin/api/gotit/feedbacks", async (request, reply) => {
   };
 });
 
+function leaderboardDisplayLimit(value?: string): number {
+  try {
+    const limit = Number(JSON.parse(value ?? "{}").displayLimit);
+    return [10, 20, 50, 100].includes(limit) ? limit : 10;
+  } catch {
+    return 10;
+  }
+}
+
 app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
   const sql = requireGotit(reply);
   if (!sql) return;
@@ -919,7 +928,7 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
     sql`
       select key, value
       from app_config
-      where key in ('analytics_enabled', 'feature_announcements_enabled')
+      where key in ('analytics_enabled', 'feature_announcements_enabled', 'leaderboard_config')
     `,
     sql`
       select event_name, count(*)::int as total
@@ -978,6 +987,7 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
     totalPages,
     analyticsEnabled: config.analytics_enabled !== "false",
     featureAnnouncementsEnabled: config.feature_announcements_enabled !== "false",
+    leaderboardDisplayLimit: leaderboardDisplayLimit(config.leaderboard_config),
     counts: Object.fromEntries(counts.map((row) => [String(row.event_name), Number(row.total)])),
     exportModes: Object.fromEntries(exportModes.map((row) => [String(row.mode), Number(row.total)])),
     themes: themes.map((row) => ({
@@ -993,6 +1003,22 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
       occurredAt: toIso(row.occurred_at),
     })),
   };
+});
+
+app.patch("/padmin/api/gotit/leaderboard-config", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const body = request.body as { displayLimit?: unknown } | null;
+  if (typeof body?.displayLimit !== "number" || ![10, 20, 50, 100].includes(body.displayLimit)) {
+    return reply.code(400).send({ error: "排行榜展示人数仅支持 10、20、50、100" });
+  }
+  await sql`
+    insert into app_config (key, value)
+    values ('leaderboard_config', ${JSON.stringify({ displayLimit: body.displayLimit })})
+    on conflict (key) do update set value =
+      (app_config.value::jsonb || excluded.value::jsonb)::text
+  `;
+  return { leaderboardDisplayLimit: body.displayLimit };
 });
 
 app.patch("/padmin/api/gotit/analytics-config", async (request, reply) => {
