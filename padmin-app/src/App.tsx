@@ -713,7 +713,38 @@ interface GotItFeedbackRow {
   content: string;
   nickname: string;
   createdAt: string;
+  updatedAt: string | null;
+  replyCount: number;
+  lastSender: "user" | "admin" | null;
+  lastContent: string | null;
+  needsReply: boolean;
+  userUnread: boolean;
 }
+
+interface GotItFeedbackReply {
+  id: string;
+  sender: "user" | "admin";
+  content: string;
+  createdAt: string | null;
+}
+
+interface GotItFeedbackDetail {
+  id: string;
+  category: string;
+  content: string;
+  nickname: string;
+  createdAt: string;
+  updatedAt: string | null;
+  replies: GotItFeedbackReply[];
+}
+
+const gotitFeedbackCategoryLabels: Record<string, string> = {
+  bug: "错误反馈",
+  malfunction: "功能异常",
+  experience: "体验问题",
+  feature: "新功能建议",
+  other: "其他",
+};
 
 function GotItUsers() {
   const [rows, setRows] = useState<GotItUserRow[]>([]);
@@ -1475,6 +1506,11 @@ function GotItFeedbacks() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [replySaving, setReplySaving] = useState(false);
+  const [detail, setDetail] = useState<GotItFeedbackDetail | null>(null);
+  const [replyContent, setReplyContent] = useState("");
   const load = useCallback(() => {
     setLoading(true);
     api<{ feedbacks: GotItFeedbackRow[]; total: number }>(`/gotit/feedbacks?page=${page}&pageSize=${PAGE_SIZE}`)
@@ -1486,22 +1522,122 @@ function GotItFeedbacks() {
       .finally(() => setLoading(false));
   }, [page]);
   useEffect(() => void load(), [load]);
+
+  async function openDetail(id: string) {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setReplyContent("");
+    try {
+      const data = await api<{ feedback: GotItFeedbackDetail }>(`/gotit/feedbacks/${id}`);
+      setDetail(data.feedback);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "加载失败");
+      setDetailOpen(false);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  async function sendReply() {
+    if (!detail) return;
+    const content = replyContent.trim();
+    if (!content) {
+      message.warning("请填写回复内容");
+      return;
+    }
+    setReplySaving(true);
+    try {
+      const data = await api<{ reply: GotItFeedbackReply }>(`/gotit/feedbacks/${detail.id}/replies`, {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      });
+      setDetail((prev) => prev ? { ...prev, replies: [...prev.replies, data.reply] } : prev);
+      setReplyContent("");
+      message.success("已回复，用户首页将显示新消息");
+      void load();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "回复失败");
+    } finally {
+      setReplySaving(false);
+    }
+  }
+
   return (
     <>
-      <PageHead title="课本单词通意见反馈" desc="一期文字反馈列表。" extra={<Button onClick={load}>刷新</Button>} />
+      <PageHead title="课本单词通意见反馈" desc="查看用户反馈并回复。用户可在小程序继续追评。" extra={<Button onClick={load}>刷新</Button>} />
       <Table
         rowKey="id"
         loading={loading}
         dataSource={rows}
         columns={[
-          { title: "类型", dataIndex: "category" },
-          { title: "昵称", dataIndex: "nickname" },
+          { title: "类型", dataIndex: "category", width: 110, render: (v: string) => gotitFeedbackCategoryLabels[v] || v },
+          { title: "昵称", dataIndex: "nickname", width: 120 },
           { title: "内容", dataIndex: "content", ellipsis: true },
-          { title: "提交时间", dataIndex: "createdAt", render: formatTime },
+          {
+            title: "状态",
+            width: 150,
+            render: (_, row) => (
+              <Space>
+                <Tag color={row.needsReply ? "orange" : "green"}>{row.needsReply ? "待回复" : "已回复"}</Tag>
+                {row.userUnread ? <Tag color="red">用户未读</Tag> : null}
+              </Space>
+            ),
+          },
+          { title: "回复", dataIndex: "replyCount", width: 72 },
+          { title: "最近更新", dataIndex: "updatedAt", width: 168, render: formatTime },
+          {
+            title: "操作",
+            width: 96,
+            render: (_, row) => (
+              <Button type="link" onClick={() => void openDetail(row.id)}>回复</Button>
+            ),
+          },
         ]}
         pagination={{ current: page, pageSize: PAGE_SIZE, total, onChange: setPage }}
-        scroll={{ x: 900 }}
+        scroll={{ x: 1080 }}
       />
+      <Modal
+        title={detail ? `回复 ${detail.nickname}` : "回复反馈"}
+        open={detailOpen}
+        onCancel={() => setDetailOpen(false)}
+        onOk={() => void sendReply()}
+        confirmLoading={replySaving}
+        okText="发送回复"
+        width={720}
+        destroyOnClose
+      >
+        {detailLoading || !detail ? (
+          <Typography.Text type="secondary">加载中...</Typography.Text>
+        ) : (
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Space>
+              <Tag>{gotitFeedbackCategoryLabels[detail.category] || detail.category}</Tag>
+              <Typography.Text type="secondary">{formatTime(detail.createdAt)}</Typography.Text>
+            </Space>
+            <Card size="small" title="用户反馈">
+              <Typography.Paragraph style={{ marginBottom: 0 }}>{detail.content}</Typography.Paragraph>
+            </Card>
+            {detail.replies.map((item) => (
+              <Card
+                key={item.id}
+                size="small"
+                title={item.sender === "admin" ? "管理员" : "用户"}
+                extra={<Typography.Text type="secondary">{formatTime(item.createdAt)}</Typography.Text>}
+              >
+                <Typography.Paragraph style={{ marginBottom: 0 }}>{item.content}</Typography.Paragraph>
+              </Card>
+            ))}
+            <Input.TextArea
+              value={replyContent}
+              onChange={(e) => setReplyContent(e.target.value)}
+              maxLength={500}
+              showCount
+              rows={4}
+              placeholder="回复用户（1-500字）"
+            />
+          </Space>
+        )}
+      </Modal>
     </>
   );
 }

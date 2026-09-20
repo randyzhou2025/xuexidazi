@@ -937,26 +937,126 @@ app.get("/padmin/api/gotit/feedbacks", async (request, reply) => {
   const pageSize = Math.min(100, Math.max(1, Number(query.pageSize ?? 20)));
   const offset = (page - 1) * pageSize;
   const rows = await sql`
-    select f.id, f.category, f.content, f.created_at, u.nickname
+    select
+      f.id,
+      f.category,
+      f.content,
+      f.created_at,
+      f.updated_at,
+      f.user_last_read_at,
+      f.admin_last_read_at,
+      u.nickname,
+      coalesce((select count(*) from feedback_replies r where r.feedback_id = f.id), 0)::int as reply_count,
+      (
+        select r.sender from feedback_replies r
+        where r.feedback_id = f.id
+        order by r.created_at desc
+        limit 1
+      ) as last_sender,
+      (
+        select r.content from feedback_replies r
+        where r.feedback_id = f.id
+        order by r.created_at desc
+        limit 1
+      ) as last_content,
+      exists (
+        select 1 from feedback_replies r
+        where r.feedback_id = f.id
+          and r.sender = 'admin'
+          and (f.user_last_read_at is null or r.created_at > f.user_last_read_at)
+      ) as user_unread
     from feedbacks f
     inner join users u on u.id = f.user_id
-    order by f.created_at desc
+    order by f.updated_at desc, f.created_at desc
     limit ${pageSize} offset ${offset}
   `;
   const totals = await sql`select count(*)::int as total from feedbacks`;
   const total = totals[0]?.total ?? 0;
   return {
-    feedbacks: rows.map((row) => ({
+    feedbacks: rows.map((row) => {
+      const lastSender = row.last_sender === "admin" ? "admin" : row.last_sender === "user" ? "user" : null;
+      return {
+        id: row.id,
+        category: row.category,
+        content: row.content,
+        nickname: row.nickname,
+        createdAt: toIso(row.created_at),
+        updatedAt: toIso(row.updated_at) ?? toIso(row.created_at),
+        replyCount: Number(row.reply_count ?? 0),
+        lastSender,
+        lastContent: row.last_content ?? null,
+        needsReply: lastSender !== "admin",
+        userUnread: Boolean(row.user_unread),
+      };
+    }),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+});
+
+app.get("/padmin/api/gotit/feedbacks/:id", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const { id } = request.params as { id: string };
+  const [row] = await sql`
+    select f.id, f.category, f.content, f.created_at, f.updated_at, u.nickname
+    from feedbacks f
+    inner join users u on u.id = f.user_id
+    where f.id = ${id}::uuid
+    limit 1
+  `;
+  if (!row) return reply.code(404).send({ error: "反馈不存在" });
+  const replies = await sql`
+    select id, sender, content, created_at
+    from feedback_replies
+    where feedback_id = ${id}::uuid
+    order by created_at asc
+  `;
+  await sql`update feedbacks set admin_last_read_at = now() where id = ${id}::uuid`;
+  return {
+    feedback: {
       id: row.id,
       category: row.category,
       content: row.content,
       nickname: row.nickname,
       createdAt: toIso(row.created_at),
-    })),
-    total,
-    page,
-    pageSize,
-    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      updatedAt: toIso(row.updated_at) ?? toIso(row.created_at),
+      replies: replies.map((item) => ({
+        id: item.id,
+        sender: item.sender === "admin" ? "admin" : "user",
+        content: item.content,
+        createdAt: toIso(item.created_at),
+      })),
+    },
+  };
+});
+
+app.post("/padmin/api/gotit/feedbacks/:id/replies", async (request, reply) => {
+  const sql = requireGotit(reply);
+  if (!sql) return;
+  const { id } = request.params as { id: string };
+  const body = request.body as { content?: unknown };
+  const content = typeof body.content === "string" ? body.content.trim() : "";
+  if (!content || content.length > 500) {
+    return reply.code(400).send({ error: "回复内容需为 1-500 字" });
+  }
+  const [feedback] = await sql`select id from feedbacks where id = ${id}::uuid limit 1`;
+  if (!feedback) return reply.code(404).send({ error: "反馈不存在" });
+  const [created] = await sql`
+    insert into feedback_replies (feedback_id, sender, content)
+    values (${id}::uuid, 'admin', ${content})
+    returning id, sender, content, created_at
+  `;
+  await sql`update feedbacks set updated_at = now() where id = ${id}::uuid`;
+  return {
+    reply: {
+      id: created.id,
+      sender: "admin",
+      content: created.content,
+      createdAt: toIso(created.created_at),
+    },
   };
 });
 
