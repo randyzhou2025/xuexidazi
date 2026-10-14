@@ -899,6 +899,7 @@ const gotItEventLabels: Record<string, string> = {
   feature_announcement_action: "新功能通知主按钮",
   home_export_click: "首页导出入口",
   home_word_match_click: "首页消消乐入口",
+  home_grammar_click: "语法课堂",
   wordlist_export_click: "导出词表",
   weakbook_click: "进入生词本",
   dictation_start: "开始听写",
@@ -912,6 +913,7 @@ const gotItEventLabels: Record<string, string> = {
 function usageEventDetails(event: GotItUsageEvent): string {
   const p = event.properties;
   const course = [p.publisherName, p.bookName, p.unitName].filter(Boolean).join(" · ");
+  if (event.eventName === "home_grammar_click") return "首页入口";
   if (event.eventName === "classmate_invite_click") {
     const sourceLabels: Record<string, string> = {
       classmates_header: "同学页顶部",
@@ -1014,6 +1016,7 @@ function GotItUsageStats() {
   const metricCards = [
     ["首页导出入口", counts.home_export_click ?? 0],
     ["首页消消乐入口", counts.home_word_match_click ?? 0],
+    ["语法课堂", counts.home_grammar_click ?? 0],
     ["实际导出", counts.wordlist_export_click ?? 0],
     ["进入生词本", counts.weakbook_click ?? 0],
     ["开始听写", counts.dictation_start ?? 0],
