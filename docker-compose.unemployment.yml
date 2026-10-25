@@ -1,0 +1,9 @@
+# 与 docker-compose.prod.yml 合用，仅启用失业有数时加入其网络。
+services:
+  xuexidazi:
+    networks:
+      - unemployment_net
+networks:
+  unemployment_net:
+    external: true
+    name: ${UNEMPLOYMENT_DOCKER_NETWORK:?set UNEMPLOYMENT_DOCKER_NETWORK}

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { registerUnemployment } from "./unemployment.js";
 import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -348,6 +349,13 @@ app.addHook("preHandler", async (request, reply) => {
 });
 
 app.get("/padmin/api/health", async () => ({ ok: true }));
+registerUnemployment(app, {
+  origin: process.env.UNEMPLOYMENT_API_ORIGIN,
+  secret: process.env.UNEMPLOYMENT_GATEWAY_SECRET,
+  workbenchDir: path.join(projectRoot, "integrations/unemployment-workbench"),
+  actor: req => req.adminUser?.role === "admin" ? req.adminUser.email : null,
+});
+
 
 app.post("/api/auth/login", async (request, reply) => {
   const body = request.body as { email?: string; password?: string };

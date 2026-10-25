@@ -13,6 +13,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/padmin/api": "http://127.0.0.1:8090",
+      "/padmin/unemployment/workbench": "http://127.0.0.1:8090",
     },
   },
   resolve: {

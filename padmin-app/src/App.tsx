@@ -1,3 +1,4 @@
+import { UnemploymentUsers, UnemploymentActivity, UnemploymentWorkbench } from "./Unemployment";
 import {
   BarChartOutlined,
   DashboardOutlined,
@@ -261,6 +262,10 @@ function AdminShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }
     { key: "/ptoe/codes", icon: <KeyOutlined />, label: <Link to="/ptoe/codes">授权码</Link> },
     { key: "/ptoe/sessions", icon: <ThunderboltOutlined />, label: <Link to="/ptoe/sessions">在线设备</Link> },
     { key: "/ptoe/logs", icon: <FileTextOutlined />, label: <Link to="/ptoe/logs">激活日志</Link> },
+    { type: "group" as const, label: "失业有数" },
+    { key: "/unemployment/users", icon: <TeamOutlined />, label: <Link to="/unemployment/users">用户管理</Link> },
+    { key: "/unemployment/activity", icon: <BarChartOutlined />, label: <Link to="/unemployment/activity">访问活跃</Link> },
+    ...[["contents","资讯与指南"],["sources","资料来源"],["benefits","失业金政策"],["insurance","社保医保政策"],["training","培训补贴"],["home","首页板块"],["settings","工具管理"],["feedback","用户反馈"],["audit","操作记录"]].map(([key,label]) => ({key:"/unemployment/"+key,icon:<FileTextOutlined />,label:<Link to={"/unemployment/"+key}>{label}</Link>})),
     { type: "group" as const, label: "课本单词通 工具" },
     { key: "/gotit/users", icon: <TeamOutlined />, label: <Link to="/gotit/users">用户管理</Link> },
     { key: "/gotit/daily-activity", icon: <BarChartOutlined />, label: <Link to="/gotit/daily-activity">学习活跃</Link> },
@@ -271,7 +276,7 @@ function AdminShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }
 
   return (
     <Layout className="padmin-layout">
-      <Layout.Sider breakpoint="lg" collapsedWidth={0}>
+      <Layout.Sider className="padmin-sider" breakpoint="lg" collapsedWidth={0}>
         <div className="padmin-logo">
           <span className="padmin-mark" />
           StudyMate
@@ -307,6 +312,9 @@ function AdminShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }
             <Route path="/ptoe/codes" element={<PtoeCodes />} />
             <Route path="/ptoe/sessions" element={<PtoeSessions />} />
             <Route path="/ptoe/logs" element={<PtoeLogs />} />
+            <Route path="/unemployment/users" element={<UnemploymentUsers api={api} />} />
+            <Route path="/unemployment/activity" element={<UnemploymentActivity api={api} />} />
+            {["contents","sources","benefits","insurance","training","home","settings","feedback","audit"].map(section => <Route key={section} path={"/unemployment/"+section} element={<UnemploymentWorkbench section={section} />} />)}
             <Route path="/gotit/users" element={<GotItUsers />} />
             <Route path="/gotit/daily-activity" element={<GotItDailyActivity />} />
             <Route path="/gotit/leaderboard-stats" element={<GotItLeaderboardStats />} />

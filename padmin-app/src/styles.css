@@ -13,6 +13,23 @@ body {
   min-height: 100vh;
 }
 
+.padmin-sider {
+  position: sticky !important;
+  top: 0;
+  height: 100vh;
+}
+
+.padmin-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+}
+
+.padmin-sider .ant-menu {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .padmin-logo {
   height: 56px;
   display: flex;
