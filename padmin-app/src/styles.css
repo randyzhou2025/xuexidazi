@@ -17,21 +17,76 @@ body {
   position: sticky !important;
   top: 0;
   height: 100vh;
+  overflow: hidden;
 }
 
-.padmin-sider .ant-layout-sider-children {
+.padmin-sider .ant-layout-sider-children,
+.padmin-nav-drawer .ant-drawer-body {
   display: flex;
   flex-direction: column;
 }
 
-.padmin-sider .ant-menu {
+.padmin-navigation {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #354a60 transparent;
+  overscroll-behavior: contain;
+}
+
+.padmin-navigation .ant-menu {
+  background: transparent;
+}
+
+.padmin-navigation .ant-menu-submenu-title,
+.padmin-navigation .ant-menu-item {
+  width: 100%;
+  margin-inline: 0;
+  border-radius: 8px;
+}
+
+.padmin-navigation .ant-menu-submenu-title {
+  font-weight: 600;
+}
+
+.padmin-navigation .ant-menu-sub.ant-menu-inline {
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 8px;
+}
+
+.padmin-navigation .ant-menu-item-selected {
+  box-shadow: inset 3px 0 0 #8bc8ff;
+}
+
+.padmin-navigation a:focus-visible {
+  outline: 2px solid #8bc8ff;
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.padmin-nav-footer {
+  flex-shrink: 0;
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.padmin-nav-footer .ant-btn,
+.padmin-drawer-close.ant-btn {
+  color: #b5c4d5;
+}
+
+.padmin-nav-footer .ant-btn:hover,
+.padmin-drawer-close.ant-btn:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 
 .padmin-logo {
-  height: 56px;
+  height: 72px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -40,6 +95,15 @@ body {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.padmin-drawer-close {
+  margin-left: auto;
+}
+
+.padmin-nav-drawer .ant-drawer-content {
+  background: #001529;
 }
 
 .padmin-mark {
@@ -50,12 +114,43 @@ body {
 }
 
 .padmin-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   background: #fff;
   border-bottom: 1px solid #eef0f5;
   padding: 0 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+}
+
+.padmin-main,
+.padmin-location {
+  min-width: 0;
+}
+
+.padmin-location {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.padmin-location > .ant-btn {
+  flex-shrink: 0;
+}
+
+.padmin-account {
+  flex-shrink: 0;
+}
+
+.padmin-account-name {
+  display: block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .padmin-content {
@@ -114,6 +209,23 @@ body {
 }
 
 @media (max-width: 768px) {
+  .padmin-header {
+    padding: 0 12px;
+    gap: 8px;
+    height: auto;
+    min-height: 64px;
+    line-height: 1.5;
+  }
+
+  .padmin-location {
+    gap: 8px;
+  }
+
+  .padmin-account-name,
+  .padmin-logout-label {
+    display: none;
+  }
+
   .padmin-content {
     padding: 16px;
   }
@@ -124,5 +236,14 @@ body {
 
   .usage-two-column {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .padmin-sider,
+  .padmin-navigation *,
+  .padmin-nav-drawer .ant-drawer-content-wrapper {
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
   }
 }

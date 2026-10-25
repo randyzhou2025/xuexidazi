@@ -1,12 +1,19 @@
 import { UnemploymentUsers, UnemploymentActivity, UnemploymentWorkbench } from "./Unemployment";
 import {
   BarChartOutlined,
+  AppstoreOutlined,
+  CloseOutlined,
+  CompassOutlined,
   DashboardOutlined,
   EditOutlined,
+  ExperimentOutlined,
   FileTextOutlined,
   KeyOutlined,
   LoginOutlined,
   LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  ReadOutlined,
   TeamOutlined,
   ThunderboltOutlined,
   TrophyOutlined,
@@ -14,10 +21,13 @@ import {
 import {
   Alert,
   Avatar,
+  Breadcrumb,
   Button,
   Card,
   DatePicker,
+  Drawer,
   Form,
+  Grid,
   Input,
   InputNumber,
   Layout,
@@ -30,13 +40,14 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 const TOKEN_KEY = "xuexidazi-auth-token";
 const LEGACY_TOKEN_KEYS = ["exam-auth-token"];
@@ -246,56 +257,138 @@ function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   );
 }
 
+const menuGroups = [
+  { key: "studymate", label: "StudyMate 公共体系", icon: <TeamOutlined />, children: [
+    { key: "/users", icon: <TeamOutlined />, label: "用户管理" },
+    { key: "/login-logs", icon: <LoginOutlined />, label: "登录日志" },
+    { key: "/homepage", icon: <DashboardOutlined />, label: "主页访问" },
+  ] },
+  { key: "exam", label: "ExamMaster 工具", icon: <AppstoreOutlined />, children: [
+    { key: "/exam/daily-activity", icon: <BarChartOutlined />, label: "备考活跃" },
+  ] },
+  { key: "ptoe", label: "PeriodicTable 工具", icon: <ExperimentOutlined />, children: [
+    { key: "/ptoe/codes", icon: <KeyOutlined />, label: "授权码" },
+    { key: "/ptoe/sessions", icon: <ThunderboltOutlined />, label: "在线设备" },
+    { key: "/ptoe/logs", icon: <FileTextOutlined />, label: "激活日志" },
+  ] },
+  { key: "unemployment", label: "失业有数", icon: <CompassOutlined />, children: [
+    { key: "/unemployment/users", icon: <TeamOutlined />, label: "用户管理" },
+    { key: "/unemployment/activity", icon: <BarChartOutlined />, label: "访问活跃" },
+    ...[["contents","资讯与指南"],["sources","资料来源"],["benefits","失业金政策"],["insurance","社保医保政策"],["training","培训补贴"],["home","首页板块"],["settings","工具管理"],["feedback","用户反馈"],["audit","操作记录"]].map(([key,label]) => ({ key: "/unemployment/" + key, icon: <FileTextOutlined />, label })),
+  ] },
+  { key: "gotit", label: "课本单词通 工具", icon: <ReadOutlined />, children: [
+    { key: "/gotit/users", icon: <TeamOutlined />, label: "用户管理" },
+    { key: "/gotit/daily-activity", icon: <BarChartOutlined />, label: "学习活跃" },
+    { key: "/gotit/leaderboard-stats", icon: <TrophyOutlined />, label: "排行榜数据" },
+    { key: "/gotit/usage-stats", icon: <DashboardOutlined />, label: "使用统计" },
+    { key: "/gotit/feedbacks", icon: <FileTextOutlined />, label: "意见反馈" },
+  ] },
+];
+const MENU_OPEN_KEY = "padmin-menu-open-groups";
+const SIDEBAR_COLLAPSED_KEY = "padmin-sidebar-collapsed";
+
 function AdminShell({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const location = useLocation();
-  const navigate = useNavigate();
-  const selected = location.pathname === "/" ? "/" : location.pathname;
+  const isMobile = Grid.useBreakpoint().lg === false;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const navigationRef = useRef<HTMLElement>(null);
+  const selected = location.pathname;
+  const activeGroup = menuGroups.find((group) => group.children.some((item) => item.key === selected));
+  const activeItem = activeGroup?.children.find((item) => item.key === selected);
+  const [openKeys, setOpenKeys] = useState<string[]>(() => {
+    let saved: string[] = [];
+    try {
+      const value: unknown = JSON.parse(localStorage.getItem(MENU_OPEN_KEY) || "[]");
+      if (Array.isArray(value)) saved = value.filter((key) => menuGroups.some((group) => group.key === key));
+    } catch { /* use the current project */ }
+    return [...new Set([...saved, ...(activeGroup ? [activeGroup.key] : [])])];
+  });
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true"; }
+    catch { return false; }
+  });
+
+  useEffect(() => {
+    if (activeGroup) setOpenKeys((keys) => keys.includes(activeGroup.key) ? keys : [...keys, activeGroup.key]);
+    setDrawerOpen(false);
+  }, [selected, activeGroup]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MENU_OPEN_KEY, JSON.stringify(openKeys));
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
+    } catch { /* navigation still works without storage */ }
+  }, [openKeys, collapsed]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const nav = navigationRef.current;
+      const item = nav?.querySelector(".ant-menu-item-selected");
+      if (!nav || !item) return;
+      const bounds = nav.getBoundingClientRect();
+      const selectedBounds = item.getBoundingClientRect();
+      if (selectedBounds.top < bounds.top + 8) nav.scrollTop += selectedBounds.top - bounds.top - 8;
+      else if (selectedBounds.bottom > bounds.bottom - 8) nav.scrollTop += selectedBounds.bottom - bounds.bottom + 8;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selected, isMobile, drawerOpen, collapsed]);
+
   const menuItems = [
     { key: "/", icon: <DashboardOutlined />, label: <Link to="/">总览</Link> },
-    { type: "group" as const, label: "StudyMate 公共体系" },
-    { key: "/users", icon: <TeamOutlined />, label: <Link to="/users">用户管理</Link> },
-    { key: "/login-logs", icon: <LoginOutlined />, label: <Link to="/login-logs">登录日志</Link> },
-    { key: "/homepage", icon: <DashboardOutlined />, label: <Link to="/homepage">主页访问</Link> },
-    { type: "group" as const, label: "ExamMaster 工具" },
-    { key: "/exam/daily-activity", icon: <BarChartOutlined />, label: <Link to="/exam/daily-activity">备考活跃</Link> },
-    { type: "group" as const, label: "PeriodicTable 工具" },
-    { key: "/ptoe/codes", icon: <KeyOutlined />, label: <Link to="/ptoe/codes">授权码</Link> },
-    { key: "/ptoe/sessions", icon: <ThunderboltOutlined />, label: <Link to="/ptoe/sessions">在线设备</Link> },
-    { key: "/ptoe/logs", icon: <FileTextOutlined />, label: <Link to="/ptoe/logs">激活日志</Link> },
-    { type: "group" as const, label: "失业有数" },
-    { key: "/unemployment/users", icon: <TeamOutlined />, label: <Link to="/unemployment/users">用户管理</Link> },
-    { key: "/unemployment/activity", icon: <BarChartOutlined />, label: <Link to="/unemployment/activity">访问活跃</Link> },
-    ...[["contents","资讯与指南"],["sources","资料来源"],["benefits","失业金政策"],["insurance","社保医保政策"],["training","培训补贴"],["home","首页板块"],["settings","工具管理"],["feedback","用户反馈"],["audit","操作记录"]].map(([key,label]) => ({key:"/unemployment/"+key,icon:<FileTextOutlined />,label:<Link to={"/unemployment/"+key}>{label}</Link>})),
-    { type: "group" as const, label: "课本单词通 工具" },
-    { key: "/gotit/users", icon: <TeamOutlined />, label: <Link to="/gotit/users">用户管理</Link> },
-    { key: "/gotit/daily-activity", icon: <BarChartOutlined />, label: <Link to="/gotit/daily-activity">学习活跃</Link> },
-    { key: "/gotit/leaderboard-stats", icon: <TrophyOutlined />, label: <Link to="/gotit/leaderboard-stats">排行榜数据</Link> },
-    { key: "/gotit/usage-stats", icon: <DashboardOutlined />, label: <Link to="/gotit/usage-stats">使用统计</Link> },
-    { key: "/gotit/feedbacks", icon: <FileTextOutlined />, label: <Link to="/gotit/feedbacks">意见反馈</Link> },
+    ...menuGroups.map((group) => ({ ...group, children: group.children.map((item) => ({
+      ...item, label: <Link to={item.key} aria-current={selected === item.key ? "page" : undefined}>{item.label}</Link>,
+    })) })),
   ];
+  const navigation = (
+    <>
+      <div className="padmin-logo">
+        <span className="padmin-mark" />
+        <span>StudyMate</span>
+        {isMobile && <Button className="padmin-drawer-close" type="text" icon={<CloseOutlined />} aria-label="关闭导航" onClick={() => setDrawerOpen(false)} />}
+      </div>
+      <nav ref={navigationRef} className="padmin-navigation" aria-label="后台导航">
+        <Menu theme="dark" mode="inline" inlineCollapsed={false} inlineIndent={16} selectedKeys={[selected]} openKeys={openKeys} onOpenChange={setOpenKeys} onClick={() => setDrawerOpen(false)} items={menuItems} />
+      </nav>
+      <div className="padmin-nav-footer">
+        <Button type="text" block icon={<MenuFoldOutlined />} onClick={() => setOpenKeys(activeGroup ? [activeGroup.key] : [])}>
+          {activeGroup ? "收起其他项目" : "收起全部项目"}
+        </Button>
+      </div>
+    </>
+  );
 
   return (
     <Layout className="padmin-layout">
-      <Layout.Sider className="padmin-sider" breakpoint="lg" collapsedWidth={0}>
-        <div className="padmin-logo">
-          <span className="padmin-mark" />
-          StudyMate
-        </div>
-        <Menu theme="dark" mode="inline" selectedKeys={[selected]} items={menuItems} />
-      </Layout.Sider>
-      <Layout>
+      {isMobile ? (
+        <Drawer rootClassName="padmin-nav-drawer" placement="left" width={280} open={drawerOpen} onClose={() => setDrawerOpen(false)} closable={false} styles={{ body: { padding: 0 } }}>
+          {navigation}
+        </Drawer>
+      ) : (
+        <Layout.Sider className="padmin-sider" width={248} collapsedWidth={0} trigger={null} collapsed={collapsed}>
+          {navigation}
+        </Layout.Sider>
+      )}
+      <Layout className="padmin-main">
         <Layout.Header className="padmin-header">
-          <Typography.Text type="secondary">{user.displayName || user.email}</Typography.Text>
-          <Space>
-            <Button onClick={() => navigate("/")}>总览</Button>
-            <Button
+          <div className="padmin-location">
+            <Tooltip title={isMobile ? "打开导航" : collapsed ? "展开侧栏" : "收起侧栏"}>
+              <Button type="text" icon={isMobile || collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} aria-label={isMobile ? "打开导航" : collapsed ? "展开侧栏" : "收起侧栏"} aria-expanded={isMobile ? drawerOpen : !collapsed} onClick={() => isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed)} />
+            </Tooltip>
+            <Breadcrumb items={[
+              { title: selected === "/" ? "总览" : <Link to="/">总览</Link> },
+              ...(activeGroup ? [{ title: activeGroup.label }, { title: activeItem?.label }] : []),
+            ]} />
+          </div>
+          <Space className="padmin-account">
+            <Typography.Text type="secondary" className="padmin-account-name">{user.displayName || user.email}</Typography.Text>
+            <Button type="text" aria-label="退出登录"
               icon={<LogoutOutlined />}
               onClick={() => {
                 setToken(null);
                 onLogout();
               }}
             >
-              退出
+              <span className="padmin-logout-label">退出</span>
             </Button>
           </Space>
         </Layout.Header>
