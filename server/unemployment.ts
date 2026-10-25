@@ -1,11 +1,8 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
-import path from "node:path";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 type Options = {
   origin?: string;
   secret?: string;
-  workbenchDir: string;
   actor: (req: FastifyRequest) => string | null;
 };
 export function registerUnemployment(app: FastifyInstance, options: Options) {
@@ -103,31 +100,24 @@ export function registerUnemployment(app: FastifyInstance, options: Options) {
     }
   });
   app.get("/padmin/unemployment/workbench/*", async (req, reply) => {
-    const rel = (req.params as { "*": string })["*"] || "index.html";
-    const root = path.resolve(options.workbenchDir),
-      file = path.resolve(root, rel);
-    if (!file.startsWith(root + path.sep))
+    const relative = (req.params as { "*": string })["*"] || "index.html";
+    if (relative !== "index.html" && !/^assets\/[\w.-]+\.(js|css)$/.test(relative))
       return reply.code(404).send({ error: "文件不存在" });
+    if (!options.origin) return reply.code(503).send({ error: "失业有数后台连接尚未配置" });
+    let target: URL;
     try {
-      if (!(await stat(file)).isFile()) throw new Error();
-      const ext = path.extname(file),
-        mime =
-          ext === ".html"
-            ? "text/html; charset=utf-8"
-            : ext === ".js"
-              ? "text/javascript; charset=utf-8"
-              : ext === ".css"
-                ? "text/css; charset=utf-8"
-                : "application/octet-stream";
-      reply.header(
-        "Cache-Control",
-        ext === ".html" ? "no-cache" : "public, max-age=3600",
-      );
-      return reply.type(mime).send(await readFile(file));
+      target = new URL("/padmin/unemployment/workbench/" + relative, options.origin);
+      if (!["http:", "https:"].includes(target.protocol)) throw new Error();
     } catch {
-      return reply
-        .code(404)
-        .send({ error: "工作台文件尚未安装，请先导出失业有数管理工作台" });
+      return reply.code(503).send({ error: "失业有数后台地址配置无效" });
+    }
+    try {
+      const response = await fetch(target, {redirect:"error",signal:AbortSignal.timeout(15000)});
+      reply.header("Cache-Control", response.ok && relative !== "index.html" ? "public, max-age=31536000, immutable" : "no-store");
+      reply.header("X-Content-Type-Options", "nosniff");
+      return reply.code(response.status).type(response.headers.get("content-type") || "application/octet-stream").send(Buffer.from(await response.arrayBuffer()));
+    } catch {
+      return reply.code(502).send({ error: "无法连接失业有数服务，请稍后重试" });
     }
   });
 }

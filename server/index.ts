@@ -352,7 +352,6 @@ app.get("/padmin/api/health", async () => ({ ok: true }));
 registerUnemployment(app, {
   origin: process.env.UNEMPLOYMENT_API_ORIGIN,
   secret: process.env.UNEMPLOYMENT_GATEWAY_SECRET,
-  workbenchDir: path.join(projectRoot, "integrations/unemployment-workbench"),
   actor: req => req.adminUser?.role === "admin" ? req.adminUser.email : null,
 });
 
