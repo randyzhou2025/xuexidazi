@@ -792,6 +792,7 @@ interface GotItUserRow {
   masteredCount: number;
   weakCount: number;
   selectedUnitId: string;
+  currentTextbook: { publisherName: string; bookName: string } | null;
   courseSetupCompleted: boolean;
   currentThemeName: string;
   progressUpdatedAt: string | null;
@@ -912,6 +913,13 @@ function GotItUsers() {
           { title: "掌握", dataIndex: "masteredCount", width: 72 },
           { title: "生词", dataIndex: "weakCount", width: 72 },
           {
+            title: "当前教材",
+            width: 240,
+            render: (_, r) => r.currentTextbook
+              ? `${r.currentTextbook.publisherName} · ${r.currentTextbook.bookName}`
+              : r.selectedUnitId ? "无法识别" : "未选择",
+          },
+          {
             title: "当前单元",
             dataIndex: "selectedUnitId",
             ellipsis: true,
@@ -990,6 +998,13 @@ interface GotItUsageStatsPayload {
   counts: Record<string, number>;
   exportModes: Record<string, number>;
   themes: Array<{ themeId: string; themeName: string; users: number }>;
+  textbookStats: {
+    totalUsers: number;
+    selectedUsers: number;
+    unselectedUsers: number;
+    unknownUsers: number;
+    textbooks: Array<{ key: string; publisherName: string; bookName: string; users: number }>;
+  };
   recentEvents: GotItUsageEvent[];
 }
 
@@ -1193,6 +1208,35 @@ function GotItUsageStats() {
           />
         </Card>
       </div>
+      <Card title="当前教材分布（全部用户）" style={{ marginTop: 16 }} loading={loading}>
+        <Typography.Paragraph type="secondary">
+          按用户最近同步的当前教材统计，每人只计入一本，包含词汇本，不受上方日期筛选影响。切换教材并同步后归入新教材。
+        </Typography.Paragraph>
+        <Space size="large" wrap style={{ marginBottom: 16 }}>
+          <Statistic title="总用户" value={data?.textbookStats.totalUsers ?? 0} suffix="人" />
+          <Statistic title="已选教材" value={data?.textbookStats.selectedUsers ?? 0} suffix="人" />
+          <Statistic title="未选择教材" value={data?.textbookStats.unselectedUsers ?? 0} suffix="人" />
+          <Statistic title="教材无法识别" value={data?.textbookStats.unknownUsers ?? 0} suffix="人" />
+        </Space>
+        <Table
+          rowKey="key"
+          size="small"
+          dataSource={data?.textbookStats.textbooks ?? []}
+          columns={[
+            { title: "出版社 / 词汇系列", dataIndex: "publisherName" },
+            { title: "册次", dataIndex: "bookName" },
+            { title: "用户数", dataIndex: "users", width: 100, defaultSortOrder: "descend", sorter: (a, b) => a.users - b.users },
+            {
+              title: "占总用户",
+              width: 110,
+              render: (_, row) => `${((row.users / (data?.textbookStats.totalUsers || 1)) * 100).toFixed(1)}%`,
+            },
+          ]}
+          pagination={{ pageSize: 10, showSizeChanger: false, showTotal: (total) => `共 ${total} 本教材` }}
+          scroll={{ x: 550 }}
+          locale={{ emptyText: "暂无已选教材的用户" }}
+        />
+      </Card>
       <Card title="事件明细（所选日期全天）" style={{ marginTop: 16 }}>
         <Table
           rowKey="id"

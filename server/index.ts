@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { registerUnemployment } from "./unemployment.js";
+import { currentGotItTextbook, summarizeGotItTextbooks } from "./gotit-textbooks.js";
 import { createHmac, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -887,6 +888,7 @@ app.get("/padmin/api/gotit/users", async (request, reply) => {
       masteredCount: Number(row.mastered_count ?? 0),
       weakCount: Number(row.weak_count ?? 0),
       selectedUnitId: String(row.selected_unit_id ?? ""),
+      currentTextbook: currentGotItTextbook(row.selected_unit_id),
       courseSetupCompleted: Boolean(row.course_setup_completed),
       currentThemeName: row.current_theme_name ?? "—",
       progressUpdatedAt: toIso(row.progress_updated_at),
@@ -1085,7 +1087,7 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
   const sizeValue = Number(query.pageSize ?? 20);
   const requestedPage = Number.isSafeInteger(pageValue) ? Math.max(1, pageValue) : 1;
   const pageSize = Number.isSafeInteger(sizeValue) ? Math.min(100, Math.max(1, sizeValue)) : 20;
-  const [configRows, counts, exportModes, themes, totals] = await Promise.all([
+  const [configRows, counts, exportModes, themes, totals, textbookGroups] = await Promise.all([
     sql`
       select key, value
       from app_config
@@ -1125,6 +1127,12 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
       inner join users u on u.id = e.user_id
       where (e.occurred_at at time zone 'Asia/Shanghai')::date = ${date}::date
     `,
+    sql<{ selected_unit_id: string | null; users: number }[]>`
+      select up.selected_unit_id, count(*)::int as users
+      from users u
+      left join user_progress up on up.user_id = u.id
+      group by up.selected_unit_id
+    `,
   ]);
   const total = Number(totals[0]?.total ?? 0);
   const config = Object.fromEntries(configRows.map((row) => [String(row.key), String(row.value)]));
@@ -1149,6 +1157,7 @@ app.get("/padmin/api/gotit/usage-stats", async (request, reply) => {
     analyticsEnabled: config.analytics_enabled !== "false",
     featureAnnouncementsEnabled: config.feature_announcements_enabled !== "false",
     leaderboardDisplayLimit: leaderboardDisplayLimit(config.leaderboard_config),
+    textbookStats: summarizeGotItTextbooks(textbookGroups),
     counts: Object.fromEntries(counts.map((row) => [String(row.event_name), Number(row.total)])),
     exportModes: Object.fromEntries(exportModes.map((row) => [String(row.mode), Number(row.total)])),
     themes: themes.map((row) => ({
